@@ -23,7 +23,7 @@ host="" cookies=firefox
 YTCAST_HOST=${YTCAST_HOST:-$host}
 save_config() { mkdir -p "${config%/*}"; printf 'host=%s\ncookies=%s\n' "$YTCAST_HOST" "$cookies" >"$config"; }
 run=${XDG_RUNTIME_DIR:-/tmp}
-keys='j,k,g,G,h,l,t,T,r,a,space,n,p,+,-,q,/,?'  # unbound while typing
+keys='j,k,g,G,h,l,t,T,r,a,s,S,space,n,p,+,-,q,/,?'  # unbound while typing
 
 # --- Speakers ---
 
@@ -267,6 +267,11 @@ case "${1:-}" in
         case "$2$pending" in
             g0) put g "$ms" ;;
             g1) echo first ;;
+            l1) view liked ;;  # gl, gp, gs, gS: straight to a tab
+            p1) view playlists ;;
+            s1) view search ;;
+            S1) view speakers ;;
+            p0) "$self" prev &>/dev/null; echo "transform-footer($self _now)" ;;
             t1) tab_step 1 ;;
             T1) tab_step -1 ;;
             l?) [[ -n $4 ]] && is_list "$4" && open_list "$3" "$4" ;;
@@ -302,6 +307,7 @@ trap 'kill $! 2>/dev/null; rm -rf "$YT_DIR"' EXIT  # the ticker stops with the U
 
 help='j/k  ctrl-d/u  gg/G   move · half page · top/bottom
 gt/gT                 tabs: liked → playlists → search → speakers
+gl  gp  gs  gS        go to: liked · playlists · search · speakers
 tab                   search: songs → videos → albums
 l/h                   open playlist / album · back
 /  esc                filter (search tab: new search) · back
@@ -318,11 +324,11 @@ fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' 
     --bind "load:transform($self _label)" \
     --bind 'j:down,k:up,G:last,q:abort,ctrl-d:half-page-down,ctrl-u:half-page-up' \
     --bind "g:${key//\{k\}/g},t:${key//\{k\}/t},T:${key//\{k\}/T},h:${key//\{k\}/h},l:${key//\{k\}/l},r:${key//\{k\}/r},a:${key//\{k\}/a}" \
+    --bind "s:${key//\{k\}/s},S:${key//\{k\}/S},p:${key//\{k\}/p}" \
     --bind "tab:transform($self _section)" \
     --bind "enter:transform($self _enter {2} {n} {q})" \
     --bind "space:execute-silent($self pause)+transform-footer($self _now)" \
     --bind "n:execute-silent($self next)+transform-footer($self _now)" \
-    --bind "p:execute-silent($self prev)+transform-footer($self _now)" \
     --bind "+:execute-silent($self vol +5)+transform-footer($self _now)" \
     --bind "-:execute-silent($self vol -5)+transform-footer($self _now)" \
     --bind "/:show-input+unbind($keys)" \

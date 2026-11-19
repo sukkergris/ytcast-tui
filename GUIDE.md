@@ -181,7 +181,7 @@ The song playing is green with ▶ in the list. While the next song is fetched, 
 
 ## 8. Playlists
 
-1. `gt` goes to the **Playlists** tab.
+1. `gp` (go to playlists) jumps to the **Playlists** tab. `gt` / `gT` also step through the tabs.
 2. `l` or `enter` opens a playlist, e.g. *Sunday Morning*.
 3. `enter` on a song plays the playlist from there.
 4. `h` goes back to the list of playlists.
@@ -190,7 +190,7 @@ The song playing is green with ▶ in the list. While the next song is fetched, 
 
 ## 9. Search
 
-1. `gt` until you are on **Search**. You can type right away.
+1. `gs` (go to search) jumps to the **Search** tab. You can type right away.
 2. Type e.g. `paper lanterns` and press `enter`. The results come after a second or two.
 3. Move to a song and press `enter` again to play it, followed by the rest of the results.
 
@@ -208,6 +208,7 @@ In the UI:
 
 | Key | Action |
 |---|---|
+| `gl` · `gp` · `gs` · `gS` | go to: liked · playlists · search · speakers |
 | `space` | pause / resume |
 | `n` · `p` | next · previous song |
 | `+` · `-` | volume up · down (5 at a time) |
@@ -238,7 +239,7 @@ ytcast play the paper lanterns midnight harbour                          # the f
 
 ## 11. Use another speaker
 
-In the UI: `gT` to **Speakers**, choose one and press `enter`. Or from the terminal:
+In the UI: `gS` to **Speakers**, choose one and press `enter`. Or from the terminal:
 
 ```bash
 ytcast scan
@@ -253,6 +254,7 @@ Give that speaker a fixed IP too (step 4).
 
 ```bash
 ~/Code/ytcast-tui/install.sh      # update to the latest version
+pkill -f ytcast-player            # then restart the player, so it runs the new version
 sudo pacman -R ytcast-tui-git     # remove
 rm -rf ~/.config/ytcast ~/.cache/ytcast   # also remove the config and the saved lists
 ```

@@ -62,6 +62,7 @@ ytcast use <IP>          # switch speaker and save it in the config
 |---|---|
 | `j` · `k` · `ctrl-d` · `ctrl-u` · `gg` · `G` | move · half page · top / bottom |
 | `gt` · `gT` | tabs: liked → playlists → search → speakers |
+| `gl` · `gp` · `gs` · `gS` | go to: liked · playlists · search · speakers |
 | `tab` | Search tab: songs → videos → albums |
 | `l` · `h` | open playlist / album · back |
 | `/` · `esc` | filter the list (on the Search tab: type a new search) · back |
