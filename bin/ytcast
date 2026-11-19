@@ -153,13 +153,14 @@ tabline() {
 }
 label() { echo "change-border-label: $app │ $(st name) │ $(tabline "$(st tab)")${1:-} "; }
 
-# Show tab $1: fzf actions. Search doesn't filter, and shows the input until there is a search; enter runs it.
+# Show tab $1: fzf actions. Search doesn't filter and opens with the input ready, so typing a search never runs
+# shortcuts (q would quit); $2 = back: coming back from an album, keep the input hidden to move in the results.
 view() {
     local search=enable-search input="hide-input+rebind($keys)" prompt=$1
     put tab "$1"
     [[ $1 == pl ]] && prompt=list
     [[ $1 == search ]] && search=disable-search
-    [[ $1 == search && -z $(st searched) ]] && input="show-input+unbind($keys)"
+    [[ $1 == search && ${2:-} != back ]] && input="show-input+unbind($keys)"
     echo "clear-query+$search+$input+reload($self _show $1)+first+change-prompt($prompt> )+$(label)"
 }
 tab_step() {  # $1 = +1 / -1: the next / previous tab
@@ -234,6 +235,8 @@ remove_from_queue() {  # $1 = index, $2 = row; in the background, as removing th
     note "Removed: $(clean "$2")"
     { CTL_TIME=60 ctl "remove?i=$1"; [[ $(st tab) == queue ]] && fzf_do "reload($self _show queue)"; } </dev/null &>/dev/null &
 }
+
+quit() { echo "$(date +%T) quit with q (tab $(st tab))" >>"$uilog"; echo abort; }  # logged, so a quit is no mystery
 
 # --- Menu (m): the actions for the row under the cursor, shown in place of the list ---
 
@@ -408,7 +411,7 @@ case "${1:-}" in
         (( ms - ${at:-0} < 1000 )) || pre=""
         put pre ""
         if [[ $tab == menu ]]; then  # only moving, h (back) and q work in the menu
-            case "${pre:-}$2" in g) put pre "$2 $ms" ;; gg) echo first ;; G) echo last ;; q) echo abort ;; h) menu_back ;; esac
+            case "${pre:-}$2" in g) put pre "$2 $ms" ;; gg) echo first ;; G) echo last ;; q) quit ;; h) menu_back ;; esac
             exit 0
         fi
         case "${pre:-}$2" in
@@ -423,10 +426,10 @@ case "${1:-}" in
             gt) tab_step 1 ;;
             gT) tab_step -1 ;;
             G) echo last ;;
-            q) echo abort ;;
+            q) quit ;;
             p) CTL_TIME=60 "$self" prev &>/dev/null & ;;  # in the background: fetching the stream must not freeze the UI
             l) [[ -n $4 ]] && is_list "$4" && open_list "$3" "$4" ;;
-            h) [[ $tab == pl ]] && view "$(st plfrom)" ;;
+            h) [[ $tab == pl ]] && view "$(st plfrom)" back ;;
             a) [[ -n $4 && $tab != @(speakers|queue) ]] && queue_add "$3" "$4" ;;
             r) rm -f "$(list "$tab")"; echo "reload($self _show $tab)+$(label)" ;;
             dd) [[ $tab == queue && -n $4 ]] && remove_from_queue "$5" "$3" ;;
