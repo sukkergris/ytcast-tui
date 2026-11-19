@@ -175,7 +175,7 @@ The footer shows what is playing:
   vol ▁▂▃········ 30   41 queued
 ```
 
-The song playing is green with ▶ in the list. While the next song is fetched, the footer says `⋯ Loading 2/42…`.
+While the song you chose is fetched, its row says `⋯ Midnight Harbour -- Fetching…` (yellow). When it plays, it turns green with ▶. While the next song is fetched, the footer says `⋯ Loading 2/42…`.
 
 The line just above the footer tells you what ytcast is waiting for, with a spinner and the seconds so far:
 
@@ -250,7 +250,7 @@ ytcast play the paper lanterns midnight harbour                          # the f
 
 ## 11. Use another speaker
 
-In the UI: `gS` to **Speakers**, choose one and press `enter`. Or from the terminal:
+In the UI: `gS` to **Speakers**, choose one and press `enter` (the line above the footer reminds you: `enter: use this speaker · r: scan again`). `r` scans the network again, e.g. for a speaker you just turned on. Or from the terminal:
 
 ```bash
 ytcast scan

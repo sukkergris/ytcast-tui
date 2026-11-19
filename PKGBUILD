@@ -1,6 +1,6 @@
 # Maintainer: sukkergris
 pkgname=ytcast-tui-git
-pkgver=r15.2adbd97
+pkgver=r17.da5f392
 pkgrel=1
 pkgdesc='YouTube Music on Chromecast speakers from the terminal, e.g. Harman Kardon Citation (unofficial)'
 arch=(any)

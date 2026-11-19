@@ -69,12 +69,14 @@ ytcast use <IP>          # switch speaker and save it in the config
 | `enter` | play from this song · open playlist / album · run the search · choose speaker |
 | `a` | add the song, or all songs of a playlist / album, to the end of the queue |
 | `space` · `n` · `p` · `+` · `-` | pause · next · previous · volume |
-| `r` | refresh the list |
+| `r` | refresh the list (Speakers tab: scan the network again) |
 | `?` · `q` | shortcuts · quit (playback continues) |
 
 On the **Search** tab you type right away; `enter` runs the search, and `enter` again plays the song under the cursor. `tab` switches between songs, videos and albums for the same search, like the chips on music.youtube.com. Artists and playlists can't be searched: yt-dlp doesn't list them.
 
-`enter` replaces the queue with the list from the chosen song; `a` adds to the end of the queue without stopping what plays.
+`enter` replaces the queue with the list from the chosen song; the row shows `⋯ Title -- Fetching…` until it plays, then ▶. `a` adds to the end of the queue without stopping what plays.
+
+On the **Speakers** tab, `enter` switches to the speaker under the cursor (saved in the config) and `r` scans the network again.
 
 ## Config
 

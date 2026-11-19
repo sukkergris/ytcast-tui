@@ -183,7 +183,7 @@ status_line() {  # $1 = frame number, $2 = "now playing" from the player
     elif [[ ${2%%$'\n'*} == ⋯* ]]; then
         echo " ${spinner[$1 % 10]} Fetching the audio stream for the next song… "
     else
-        echo " Press ? for shortcuts "
+        [[ $(st tab) == speakers ]] && echo " enter: use this speaker · r: scan again " || echo " Press ? for shortcuts "
     fi
 }
 what() {  # what fetching list $1 means, for the status line
@@ -277,8 +277,10 @@ case "${1:-}" in
             speakers) while read -r ip n; do
                     if [[ $ip == "$YTCAST_HOST" ]]; then printf '\e[1;32m▶ %s ‒ %s\e[0m\t%s\n' "$n" "$ip" "$ip"; else printf '  %s ‒ %s\t%s\n' "$n" "$ip" "$ip"; fi
                 done <"$f" ;;
-            *) awk -F'\t' -v cur="$(ctl current 2>/dev/null || true)" \
-                '{ if ($2 == cur) printf "\033[1;32m▶ %s\033[0m\t%s\n", $1, $2; else printf "  %s\t%s\n", $1, $2 }' "$f" ;;
+            *) awk -F'\t' -v cur="$(ctl current 2>/dev/null || true)" -v pend="$(st pending)" '
+                $2 == pend { printf "\033[33m⋯ %s -- Fetching…\033[0m\t%s\n", $1, $2; next }  # enter pressed, stream on its way
+                $2 == cur  { printf "\033[1;32m▶ %s\033[0m\t%s\n", $1, $2; next }
+                           { printf "  %s\t%s\n", $1, $2 }' "$f" ;;
         esac
         exit ;;
     _enter)  # $2 = {2}: URL or IP; $3 = {n}; $4 = {q}; $5 = {1}
@@ -299,9 +301,14 @@ case "${1:-}" in
                 rm -f "$YT_DIR/busy.$BASHPID"
                 view speakers ;;
             liked | pl | search)  # play the list from this song; runs in the background, the footer shows "Loading…"
-                t=${5#  } t=${t#▶ }
-                { busy "Starting \"${t%% ‒ *}\"…"; player && cut -f2 "$(list "$tab")" | ctl "queue?start=$3" --data-binary @-; } </dev/null &>/dev/null &
-                echo "transform-footer($self _now)" ;;
+                t=${5#  } t=${t#▶ } t=${t#⋯ }
+                put pending "$2"  # "⋯ Title -- Fetching…" on the row until the song plays (or fails)
+                {
+                    busy "Starting \"${t%% ‒ *}\"…"
+                    player && cut -f2 "$(list "$tab")" | ctl "queue?start=$3" --data-binary @-
+                    rm -f "$YT_DIR/pending"
+                } </dev/null &>/dev/null &
+                echo "track-current+reload($self _show $tab)+transform-footer($self _now)" ;;
         esac
         exit ;;
     _key)  # $2 = key, $3-$5 = {1} {2} {n}. g waits 1 s for the next key (gg, gt, gT).
@@ -331,7 +338,7 @@ case "${1:-}" in
             if (( i % 8 == 0 )); then
                 read -r YTCAST_HOST <"$YT_DIR/host" || true
                 if np=$(ctl now); then
-                    cur=$(ctl current) || true
+                    cur="$(ctl current)|$(st pending)" || true  # the song playing, and the one being fetched
                     act="change-footer:$np"
                     tab=$(st tab)
                     if [[ $cur != "$last" && $tab != @(playlists|speakers) && ! ($tab == search && $(section) == albums) ]]; then
@@ -369,7 +376,7 @@ space  n/p  +/-       pause · next/previous · volume
 r                     refresh list (liked songs and playlists are cached)
 ?  q                  shortcuts · quit (playback continues)'
 key="transform($self _key {k} {1} {2} {n})"
-fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' --with-nth=1 --prompt 'liked> ' \
+fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' --with-nth=1 --id-nth=2 --prompt 'liked> ' \
     --layout=reverse --border --border-label " $app │ $(st name) │ $(tabline liked) " \
     --header "$help" --footer ' ' --footer-border=top --footer-label ' Press ? for shortcuts ' \
     --bind "start:reload($self _show liked)+toggle-header,?:toggle-header" \
