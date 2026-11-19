@@ -316,6 +316,8 @@ case "${1:-}" in
         s=$(info "$2") || { echo "ytcast: no Cast speaker answers at $2" >&2; exit 1; }
         YTCAST_HOST=$2; save_config
         echo "Using $(name "$s") at $YTCAST_HOST (saved in $config)"; exit ;;
+    "" | play | pause | next | prev | stop | vol | status | _*) ;;
+    *) usage >&2; exit 1 ;;  # before the speaker check, so a typo (e.g. "set") is not "no speaker chosen"
 esac
 [[ -n $YTCAST_HOST ]] || { echo "ytcast: no speaker chosen. Find one with 'ytcast scan' and pick it with 'ytcast use <IP>'" >&2; exit 1; }
 
