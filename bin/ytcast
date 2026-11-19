@@ -198,7 +198,7 @@ queue_add() {  # $1 = row, $2 = URL, $3 = next (right after the song playing): a
 busy() { echo "$1" >"$YT_DIR/busy.$BASHPID"; }
 note() { echo "$1" >"$YT_DIR/note"; }  # shown for 4 s with ✓ when nothing is busy
 spinner=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
-fzf_do() { curl -s --unix-socket "$YT_DIR/fzf.sock" -XPOST http://localhost -d "$1" >/dev/null || true; }  # run fzf actions
+fzf_do() { curl -sf --max-time 1 --unix-socket "$YT_DIR/fzf.sock" -XPOST http://localhost -d "$1" >/dev/null; }  # run fzf actions; fails if fzf didn't take them
 mtime() { stat -c %Y "$1" 2>/dev/null || echo 0; }  # 0 if the file is gone (it may vanish while we look)
 status_line() {  # $1 = frame number, $2 = "now playing" from the player ("" = the player doesn't answer)
     local f msg="" age=0 err
@@ -459,13 +459,13 @@ case "${1:-}" in
                     if [[ $cur != "$last" && $tab != @(playlists|speakers|menu) && ! ($tab == search && $(section) == albums) ]]; then
                         act="track-current+reload($self _show $tab)+$act"
                     fi
-                    last=$cur
+                    fzf_do "$act" && last=$cur  # only remembered once fzf took it, else tried again next second
                 fi
             fi
-            [[ -z $act ]] || fzf_do "$act"
             msg=$(status_line "$i" "$np")  # its own request: a "change-…:text" action must come last
             i=$((i + 1))
-            [[ $msg == "$shown" ]] || { fzf_do "change-footer-label:$msg"; shown=$msg; }
+            # Sent when it changes, and again every second: a lost update would otherwise stick (e.g. "Fetching…")
+            if [[ $msg != "$shown" ]] || (( i % 8 == 1 )); then fzf_do "change-footer-label:$msg" && shown=$msg; fi
         done ;;
     "") ;;
     *) usage >&2; exit 1 ;;
