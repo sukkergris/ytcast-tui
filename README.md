@@ -19,9 +19,9 @@ cd ~/Code/ytcast-tui
 ./install.sh         # installs the dependencies, ytcast and ytcast-player to /usr/bin
 ```
 
-Update or reinstall: `~/Code/ytcast-tui/install.sh` (runs `git pull` and `makepkg -sif`; it builds what is pushed to GitHub, not local changes)
-Development: `./dev.sh` copies the local `bin/ytcast` and `bin/ytcast-player` to `/usr/bin`, uncommitted changes included (needs `sudo pacman -S python-pychromecast yt-dlp` once). Run `./install.sh` to go back to the packaged version.
+Update: `~/Code/ytcast-tui/install.sh`. It pulls the latest version from GitHub, builds the package and installs it with pacman. Restart the player daemon afterwards, so it runs the new code: `pkill -f ytcast-player` (the next `ytcast` command starts it again; the song playing finishes, but the queue stops until then).
 Uninstall: `sudo pacman -R ytcast-tui-git`
+Changing the code? See [Development](#development).
 
 ### First run
 
@@ -114,7 +114,7 @@ The daemon logs every track to `$XDG_RUNTIME_DIR/ytcast-<IP>.log`, one line each
   - [ ] `enter` on the first song; let the queue play 3–4 songs (`n` to go faster). Does it keep going?
   - [ ] How many shorts or other non-music videos are among the first 50?
 - [ ] **2. Playlists (~3 min)**
-  - [ ] `gt` → Playlists, `l` opens one, `enter` on a song plays it.
+  - [ ] `gp` → Playlists, `l` opens one, `enter` on a song plays it.
   - [ ] `h` back, open another one. Are the lists right? Non-music playlists in the list?
 - [ ] **3. Cache (~1 min)**
   - [ ] `q` and `ytcast` again: Liked shows at once.
@@ -146,6 +146,30 @@ The daemon logs every track to `$XDG_RUNTIME_DIR/ytcast-<IP>.log`, one line each
 
   - [ ] Set the login back: `sed -i 's/^cookies=.*/cookies=firefox/' ~/.config/ytcast/config; pkill -f ytcast-player`
 - [ ] **6. Report:** the notes and the two pairs of numbers from step 5. 0.2 is planned from them (e.g. a filter for shorts, and resolving streams with or without login).
+
+## Development
+
+Two scripts install the app. Users only need `install.sh`; `dev.sh` is for trying changes.
+
+| Script | Installs | Use it when |
+|---|---|---|
+| `./install.sh` | the package built from what is **pushed to GitHub** (`git pull`, `makepkg -sf`, `pacman -U`). pacman owns the files, and `pacman -Q ytcast-tui-git` shows the version. | you use the app, and after you have pushed a change |
+| `./dev.sh` | your **working copy**: copies `bin/ytcast` and `bin/ytcast-player` straight to `/usr/bin` with `sudo install`, uncommitted changes included. Needs `sudo pacman -S python-pychromecast yt-dlp` once. | you want to try a change before committing it |
+
+A typical change:
+
+1. Edit `bin/ytcast` and `bin/ytcast-player`.
+2. Try it: run `bin/ytcast` from the repo (nothing installed), or `./dev.sh` to have it as `ytcast` everywhere.
+3. Commit and push.
+4. `./install.sh` puts the packaged version back. It takes over the files `dev.sh` copied (`pacman -U --overwrite`); without that, pacman refuses with "exists in filesystem".
+
+Good to know:
+
+- `makepkg` writes the new `pkgver` (e.g. `r6.cce9dd8`) into `PKGBUILD`. Commit it as `chore: opdater pkgver fra makepkg`.
+- After `./dev.sh`, `pacman -Qkk ytcast-tui-git` reports the files as modified. That is expected until the next `./install.sh`.
+- Version bump: change `app="ytcast X.Y.Z"` in `bin/ytcast`, commit, add an annotated tag `vX.Y.Z` and push with `git push --follow-tags`.
+- **Restart the daemon** after `./dev.sh` or `./install.sh`: `pkill -f ytcast-player`. A running `ytcast-player` keeps the old code until it quits.
+- **Test runs talk to the real daemon.** There is one daemon per speaker, found by its socket (`$XDG_RUNTIME_DIR/ytcast-<IP>.sock`), so `bin/ytcast` from the repo controls the same queue as the installed one. Check `ytcast status` before testing, and use another config (`XDG_CONFIG_HOME=/tmp/test-config`) with a speaker nobody listens to.
 
 ## License
 
