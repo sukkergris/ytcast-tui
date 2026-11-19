@@ -153,14 +153,18 @@ tabline() {
 }
 label() { echo "change-border-label: $app │ $(st name) │ $(tabline "$(st tab)")${1:-} "; }
 
+# The input is open: letters are text, not shortcuts. Kept in state, so the status line can say so (else it looks frozen).
+typing_on() { put typing 1; echo "show-input+unbind($keys)"; }
+typing_off() { rm -f "$YT_DIR/typing"; echo "hide-input+rebind($keys)"; }
+
 # Show tab $1: fzf actions. Search doesn't filter and opens with the input ready, so typing a search never runs
 # shortcuts (q would quit); $2 = back: coming back from an album, keep the input hidden to move in the results.
 view() {
-    local search=enable-search input="hide-input+rebind($keys)" prompt=$1
+    local search=enable-search input prompt=$1
     put tab "$1"
     [[ $1 == pl ]] && prompt=list
     [[ $1 == search ]] && search=disable-search
-    [[ $1 == search && ${2:-} != back ]] && input="show-input+unbind($keys)"
+    if [[ $1 == search && ${2:-} != back ]]; then input=$(typing_on); else input=$(typing_off); fi
     echo "clear-query+$search+$input+reload($self _show $1)+first+change-prompt($prompt> )+$(label)"
 }
 tab_step() {  # $1 = +1 / -1: the next / previous tab
@@ -214,6 +218,9 @@ status_line() {  # $1 = frame number, $2 = "now playing" from the player ("" = t
         echo " ! The player doesn't answer – see $run/ytcast-$YTCAST_HOST.log "
     elif [[ -s $YT_DIR/note ]] && (( EPOCHSECONDS - $(mtime "$YT_DIR/note") < 4 )); then
         echo " ✓ $(<"$YT_DIR/note") "
+    elif [[ -e $YT_DIR/typing ]]; then
+        [[ $(st tab) == search ]] && echo " Typing a search – enter: search · esc: back to the list " ||
+            echo " Typing a filter – esc: back to the list "
     elif [[ ${2%%$'\n'*} == ⋯* ]]; then
         echo " ${spinner[$1 % 10]} Fetching the audio stream for the next song… "
     else
@@ -243,7 +250,7 @@ quit() { echo "$(date +%T) quit with q (tab $(st tab))" >>"$uilog"; echo abort; 
 open_menu() {  # $1 = row, $2 = URL, $3 = index
     [[ -n $2 && $(st tab) != @(speakers|menu) ]] || return 0
     put mfrom "$(st tab)"; put mrow "$(clean "$1")"; put murl "$2"; put mn "$3"; put tab menu
-    echo "hide-input+rebind($keys)+enable-search+clear-query+reload-sync($self _show menu)+pos(2)+change-prompt(menu> )+$(label)"
+    echo "$(typing_off)+enable-search+clear-query+reload-sync($self _show menu)+pos(2)+change-prompt(menu> )+$(label)"
 }
 menu_items() {  # "label<TAB>action" lines; the first line is the title (no action)
     local from u
@@ -264,7 +271,7 @@ menu_back() {  # back to the list the menu came from, on the same row
     put tab "$from"
     [[ $from == search ]] && search=disable-search
     [[ $from == pl ]] && prompt=list
-    echo "$search+hide-input+rebind($keys)+reload-sync($self _show $from)+pos($(($(st mn) + 1)))+change-prompt($prompt> )+$(label)"
+    echo "$search+$(typing_off)+reload-sync($self _show $from)+pos($(($(st mn) + 1)))+change-prompt($prompt> )+$(label)"
 }
 menu_do() {  # $1 = action
     local u n t
@@ -336,7 +343,8 @@ case "${1:-}" in
     # Internal sub-calls from fzf
     _now) ctl now; exit ;;
     _label) label; exit ;;
-    _esc) if [[ $(st tab) == menu ]]; then menu_back; else echo "hide-input+rebind($keys)"; fi; exit ;;
+    _esc) if [[ $(st tab) == menu ]]; then menu_back; else typing_off; fi; exit ;;
+    _slash) typing_on; exit ;;  # /: type to filter the list (the Search tab: a new search)
     _section)  # tab on the Search tab: songs → videos → albums for the same search
         [[ $(st tab) == search ]] || exit 0
         case $(section) in songs) put section videos ;; videos) put section albums ;; *) put section songs ;; esac
@@ -379,7 +387,7 @@ case "${1:-}" in
         tab=$(st tab)
         if [[ $tab == search && -n ${4:-} && $4 != "$(st searched)" ]]; then  # a new search
             put searched "$4"; rm -f "$YT_DIR"/search-*
-            echo "reload($self _show search)+hide-input+rebind($keys)+first+$(label)"
+            echo "reload($self _show search)+$(typing_off)+first+$(label)"
             exit
         fi
         [[ -n ${2:-} ]] || exit 0
@@ -502,5 +510,5 @@ fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' 
     --bind "n:execute-silent($self next &>/dev/null &)" \
     --bind "+:execute-silent($self vol +5)+transform-footer($self _now)" \
     --bind "-:execute-silent($self vol -5)+transform-footer($self _now)" \
-    --bind "/:show-input+unbind($keys)" \
+    --bind "/:transform($self _slash)" \
     --bind "esc:transform($self _esc)" </dev/null
