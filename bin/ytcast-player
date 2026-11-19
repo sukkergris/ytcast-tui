@@ -5,7 +5,8 @@ Keeps the Cast connection open and plays a queue of YouTube (Music) URLs track b
 an audio stream right before it plays (stream URLs expire); the next track is resolved in the background meanwhile.
 Control API: HTTP over a unix socket (curl --unix-socket):
   GET  /ping /now /current /pause /next /prev /stop /vol[?set=N | ?delta=N]
-  POST /queue?start=N   body: YouTube URLs, one per line
+  POST /queue?start=N   body: YouTube URLs, one per line; replaces the queue and plays from song N
+  POST /queue?append=1  adds to the end of the queue; plays them if nothing of ours is playing
 Quits after 30 min without playback. Usage: ytcast-player <speaker IP> <socket> [browser to read the login from]
 """
 import os
@@ -185,12 +186,20 @@ class Ctl(BaseHTTPRequestHandler):
 
     def do_POST(self):  # /queue
         global queue, error
-        start = int(parse_qs(urlsplit(self.path).query).get("start", ["0"])[0])
+        qs = parse_qs(urlsplit(self.path).query)
         items = [line for line in self.rfile.read(int(self.headers.get("Content-Length", 0))).decode().splitlines() if line]
         if not items:
             return self.reply(400, "empty queue\n")
-        queue, error = items, ""
-        if play(min(start, len(items) - 1)):
+        if "append" in qs:
+            queue.extend(items)  # same list, so a play() that is resolving keeps going
+            if loading or (ours() and mc.status.player_state in ("PLAYING", "BUFFERING", "PAUSED")):
+                threading.Thread(target=prefetch, args=(pos + 1,), daemon=True).start()
+                return self.reply(200, "")
+            start = len(queue) - len(items)
+        else:
+            queue, error = items, ""
+            start = min(int(qs.get("start", ["0"])[0]), len(items) - 1)
+        if play(start):
             return self.reply(200, "")
         self.reply(500, f"{error or 'nothing could be played'}\n")
 

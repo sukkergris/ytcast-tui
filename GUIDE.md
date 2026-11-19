@@ -194,6 +194,8 @@ The song playing is green with ▶ in the list. While the next song is fetched, 
 2. Type e.g. `paper lanterns` and press `enter`. The results come after a second or two.
 3. Move to a song and press `enter` again to play it, followed by the rest of the results.
 
+`tab` switches between **Songs**, **Videos** (live versions, music videos, covers) and **Albums** for the same search. On Albums, `l` or `enter` opens an album, `enter` on a song plays the album from there, and `h` goes back.
+
 `/` starts a new search, and `esc` goes back to moving with `j` / `k`.
 
 On the other tabs `/` filters the list instead: type `harbour` to find *Midnight Harbour* among your liked songs.
@@ -209,7 +211,10 @@ In the UI:
 | `space` | pause / resume |
 | `n` · `p` | next · previous song |
 | `+` · `-` | volume up · down (5 at a time) |
+| `a` | add the song (or a whole playlist / album) to the end of the queue |
 | `q` | quit the UI; **the music keeps playing** |
+
+`enter` replaces the queue with the list from that song; `a` adds to it without stopping what plays. The footer shows how many songs are queued.
 
 From any terminal, also with the UI closed:
 

@@ -1,6 +1,6 @@
 # ytcast-tui
 
-YouTube Music on Chromecast speakers from the terminal, made for a Harman Kardon Citation but works with any Cast device (Nest, Google Home, …). Browse your liked songs, your playlists and search results with fzf and vim keys, play from any song, and see "now playing" in the footer.
+YouTube Music on Chromecast speakers from the terminal, made for a Harman Kardon Citation but works with any Cast device (Nest, Google Home, …). Browse your liked songs, your playlists and search results (songs, videos, albums) with fzf and vim keys, play from any song or add it to the queue, and see "now playing" in the footer.
 
 New to this? Follow the **[step-by-step guide](GUIDE.md)**, from installing to playing, including how to give the speaker a fixed IP in your router.
 
@@ -62,14 +62,18 @@ ytcast use <IP>          # switch speaker and save it in the config
 |---|---|
 | `j` · `k` · `ctrl-d` · `ctrl-u` · `gg` · `G` | move · half page · top / bottom |
 | `gt` · `gT` | tabs: liked → playlists → search → speakers |
-| `l` · `h` | open playlist · back |
+| `tab` | Search tab: songs → videos → albums |
+| `l` · `h` | open playlist / album · back |
 | `/` · `esc` | filter the list (on the Search tab: type a new search) · back |
-| `enter` | play from this song · open playlist · run the search · choose speaker |
+| `enter` | play from this song · open playlist / album · run the search · choose speaker |
+| `a` | add the song, or all songs of a playlist / album, to the end of the queue |
 | `space` · `n` · `p` · `+` · `-` | pause · next · previous · volume |
 | `r` | refresh the list |
 | `?` · `q` | shortcuts · quit (playback continues) |
 
-On the **Search** tab you type right away; `enter` runs the search, and `enter` again plays the song under the cursor.
+On the **Search** tab you type right away; `enter` runs the search, and `enter` again plays the song under the cursor. `tab` switches between songs, videos and albums for the same search, like the chips on music.youtube.com. Artists and playlists can't be searched: yt-dlp doesn't list them.
+
+`enter` replaces the queue with the list from the chosen song; `a` adds to the end of the queue without stopping what plays.
 
 ## Config
 
@@ -85,7 +89,7 @@ cookies=firefox     # browser to read the YouTube login from; empty = no login (
 - **Two parts:** `ytcast` (bash) is the UI and CLI. `ytcast-player` (Python, pychromecast) is a small daemon per speaker that keeps the Cast connection and the queue. `ytcast` starts it on demand and talks to it with curl over a unix socket (`$XDG_RUNTIME_DIR/ytcast-<IP>.sock`). Playback continues when you quit the UI; the daemon quits after 30 minutes without playback.
 - **Streams:** right before a song plays, yt-dlp turns its YouTube URL into an audio stream (m4a), which the speaker fetches from YouTube itself. Stream URLs expire, so they are never resolved far ahead; the next song is resolved in the background while the current one plays.
 - **No cover art:** a speaker without a screen (Citation Amp) refuses the whole track when the metadata has a webp thumbnail, so none is sent.
-- **Lists:** liked songs (`music.youtube.com/playlist?list=LM`) and your playlists (`youtube.com/feed/playlists`) are fetched with `yt-dlp --flat-playlist` and cached in `~/.cache/ytcast/`. Search uses `music.youtube.com/search`.
+- **Lists:** liked songs (`music.youtube.com/playlist?list=LM`) and your playlists (`youtube.com/feed/playlists`) are fetched with `yt-dlp --flat-playlist` and cached in `~/.cache/ytcast/`. Search uses `music.youtube.com/search?q=…#songs` (`#videos`, `#albums`), max 30 results. Album results come without names, so each album is looked up (in parallel, ~3 s).
 - **Speakers:** found by asking every address on the /24 network for `http://<IP>:8008/setup/eureka_info`, which Cast devices answer with their name.
 
 ## TODO
@@ -115,7 +119,13 @@ The daemon logs every track to `$XDG_RUNTIME_DIR/ytcast-<IP>.log`, one line each
 - [ ] **3. Cache (~1 min)**
   - [ ] `q` and `ytcast` again: Liked shows at once.
   - [ ] `r` fetches the list again ("loading…").
-- [ ] **4. Refused streams, with and without login (~5 min)**
+- [ ] **4. Search and queue (new in 0.2, ~5 min)**
+  - [ ] Search tab: type a search, `enter`. `tab` → Videos, `tab` → Albums (names after ~3 s), `tab` → Songs.
+  - [ ] Albums: `l` opens one, `enter` on a song plays the album from there, `h` back to the albums.
+  - [ ] While a song plays: `a` on a song → "+ queued" in the label and one more "queued" in the footer; it plays after the queue.
+  - [ ] `a` on an album or playlist adds all its songs.
+  - [ ] With nothing playing (`ytcast stop`): `a` starts the song at once.
+- [ ] **5. Refused streams, with and without login (~5 min)**
   - [ ] With the login: play 20 songs from Liked (`n` to step quickly), then count and save the log:
 
     ```bash
@@ -135,7 +145,7 @@ The daemon logs every track to `$XDG_RUNTIME_DIR/ytcast-<IP>.log`, one line each
     ```
 
   - [ ] Set the login back: `sed -i 's/^cookies=.*/cookies=firefox/' ~/.config/ytcast/config; pkill -f ytcast-player`
-- [ ] **5. Report:** the notes and the two pairs of numbers from step 4. 0.2 is planned from them (e.g. a filter for shorts, and resolving streams with or without login).
+- [ ] **6. Report:** the notes and the two pairs of numbers from step 5. 0.2 is planned from them (e.g. a filter for shorts, and resolving streams with or without login).
 
 ## License
 
