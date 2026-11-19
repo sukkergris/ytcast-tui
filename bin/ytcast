@@ -8,6 +8,7 @@
 # Rows (fields separated by TAB):
 #   songs (liked, pl, search):  Title ‒ Artist <TAB> YouTube URL   (shown with ▶ on the one playing)
 #   playlists, albums:          Name (‒ Artist) <TAB> playlist / album URL
+#   queue (from the player):    played|playing|queued <TAB> Title ‒ Artist <TAB> YouTube URL
 #   speakers (stored):          IP Name
 set -euo pipefail
 (( BASH_VERSINFO[0] >= 5 )) || { echo "ytcast needs bash >= 5" >&2; exit 1; }
@@ -23,7 +24,7 @@ host="" cookies=firefox
 YTCAST_HOST=${YTCAST_HOST:-$host}
 save_config() { mkdir -p "${config%/*}"; printf 'host=%s\ncookies=%s\n' "$YTCAST_HOST" "$cookies" >"$config"; }
 run=${XDG_RUNTIME_DIR:-/tmp}
-keys='j,k,g,G,h,l,t,T,r,a,s,S,space,n,p,+,-,q,/,?'  # unbound while typing
+keys='j,k,g,G,h,l,t,T,r,a,s,S,d,space,n,p,+,-,q,/,?'  # unbound while typing
 
 # --- Speakers ---
 
@@ -111,15 +112,18 @@ fetch() {  # $1 = list
             if [[ $(section) == albums ]]; then albums "$(search_url "$(st searched)")#albums"
             else songs "$(search_url "$(st searched)")#$(section)" 30; fi ;;
         speakers) scan | sort -t. -k4,4n ;;
+        queue) ctl queue 2>/dev/null || true ;;
     esac
 }
+clean() { local t=${1#  }; t=${t#▶ } t=${t#⋯ }; echo "${t% -- Fetching…}"; }  # a row's title without ▶ ⋯ markers
+swap() { awk -F'\t' '{ print $2 "\t" $1 }'; }  # "Title<TAB>URL" rows → "URL<TAB>Title" lines for the player
 
 # Tab line with the current tab in brackets, e.g. "Liked (gl)  Playlists (gp)  [ Search (gs) › Albums ]  Speakers (gS)"
 tabline() {
     local cur=$1 out="" t n sec
-    local -A short=([liked]=gl [playlists]=gp [search]=gs [speakers]=gS)  # shown after the name: "Liked (gl)"
+    local -A short=([liked]=gl [playlists]=gp [search]=gs [queue]=gq [speakers]=gS)  # shown after the name: "Liked (gl)"
     [[ $cur == pl ]] && cur=$(st plfrom)
-    for t in liked playlists search speakers; do
+    for t in liked playlists search queue speakers; do
         n="${t^} (${short[$t]})"
         [[ $t == search && $1 == search ]] && sec=$(section) && n+=" › ${sec^}"
         [[ $t == "$cur" && $1 == pl ]] && n+=" › $(st plname)"
@@ -139,11 +143,11 @@ view() {
     echo "clear-query+$search+$input+reload($self _show $1)+first+change-prompt($prompt> )+$(label)"
 }
 tab_step() {  # $1 = +1 / -1: the next / previous tab
-    local tabs=(liked playlists search speakers) cur i
+    local tabs=(liked playlists search queue speakers) cur i
     cur=$(st tab)
     [[ $cur == pl ]] && cur=$(st plfrom)
     for i in "${!tabs[@]}"; do [[ ${tabs[i]} == "$cur" ]] && break; done
-    view "${tabs[(i + $1 + 4) % 4]}"
+    view "${tabs[(i + $1 + 5) % 5]}"
 }
 open_list() {  # $1 = row ({1}), $2 = playlist / album URL: show its songs; h goes back to where it came from
     local tab
@@ -153,11 +157,13 @@ open_list() {  # $1 = row ({1}), $2 = playlist / album URL: show its songs; h go
     view pl
 }
 queue_add() {  # $1 = row, $2 = URL: add the song, or all songs of a playlist / album, to the end of the queue
-    local t=${1#  }
+    local t
+    t=$(clean "$1")
     {
         busy "Adding \"${t%% ‒ *}\" to the queue…"
-        player && if is_list "$2"; then songs "$2" | cut -f2; else echo "$2"; fi | ctl "queue?append=1" --data-binary @- &&
-            note "Queued: ${t%% ‒ *}"
+        player && if is_list "$2"; then songs "$2" | swap; else printf '%s\t%s\n' "$2" "$t"; fi |
+            ctl "queue?append=1" --data-binary @- && note "Queued: ${t%% ‒ *}"
+        [[ $(st tab) == queue ]] && fzf_do "reload($self _show queue)"
     } </dev/null &>/dev/null &
 }
 
@@ -260,20 +266,27 @@ case "${1:-}" in
         exit ;;
     _show)  # $2 = list; fetched the first time, then printed with ▶ on the song playing
         f=$(list "$2")
+        [[ $2 == queue ]] && rm -f "$f"  # always fresh from the player
         if [[ ! -e $f ]]; then
             mkdir -p "${f%/*}"
-            [[ $2 == search && -z $(st searched) ]] || busy "$(what "$2")"
+            [[ $2 == search && -z $(st searched) ]] || { msg=$(what "$2"); [[ -z $msg ]] || busy "$msg"; }
             fetch "$2" >"$f.tmp" 2>"$YT_DIR/err" || true
             mv "$f.tmp" "$f"
         fi
         if [[ ! -s $f ]]; then
             if [[ $2 == search && -z $(st searched) ]]; then printf '  Type a search and press enter\t\n'
+            elif [[ $2 == queue ]]; then printf '  The queue is empty. Press a on a song to add it\t\n'
             elif [[ -s $YT_DIR/err ]]; then printf '  ! %s\t\n' "$(tail -1 "$YT_DIR/err")"; rm -f "$f"
             else printf '  (empty)\t\n'; fi
             exit 0
         fi
         case $2 in
             playlists) cat "$f" ;;
+            queue) awk -F'\t' -v pend="$(st pending)" '
+                $3 == pend      { printf "\033[33m⋯ %s -- Fetching…\033[0m\t%s\n", $2, $3; next }
+                $1 == "played"  { printf "\033[90m  %s\033[0m\t%s\n", $2, $3; next }  # grey
+                $1 == "playing" { printf "\033[1;32m▶ %s\033[0m\t%s\n", $2, $3; next }
+                                { printf "  %s\t%s\n", $2, $3 }' "$f" ;;
             speakers) while read -r ip n; do
                     if [[ $ip == "$YTCAST_HOST" ]]; then printf '\e[1;32m▶ %s ‒ %s\e[0m\t%s\n' "$n" "$ip" "$ip"; else printf '  %s ‒ %s\t%s\n' "$n" "$ip" "$ip"; fi
                 done <"$f" ;;
@@ -300,35 +313,42 @@ case "${1:-}" in
                 player 2>/dev/null || true
                 rm -f "$YT_DIR/busy.$BASHPID"
                 view speakers ;;
-            liked | pl | search)  # play the list from this song; runs in the background, the footer shows "Loading…"
-                t=${5#  } t=${t#▶ } t=${t#⋯ }
+            liked | pl | search | queue)  # play the list from this song (queue: jump to it); in the background
+                t=$(clean "${5:-}")
                 put pending "$2"  # "⋯ Title -- Fetching…" on the row until the song plays (or fails)
                 {
                     busy "Starting \"${t%% ‒ *}\"…"
-                    player && cut -f2 "$(list "$tab")" | ctl "queue?start=$3" --data-binary @-
+                    if [[ $tab == queue ]]; then ctl "jump?i=$3"
+                    else player && swap <"$(list "$tab")" | ctl "queue?start=$3" --data-binary @-; fi
                     rm -f "$YT_DIR/pending"
                 } </dev/null &>/dev/null &
                 echo "track-current+reload($self _show $tab)+transform-footer($self _now)" ;;
         esac
         exit ;;
-    _key)  # $2 = key, $3-$5 = {1} {2} {n}. g waits 1 s for the next key (gg, gt, gT).
-        tab=$(st tab) g=$(st g) ms=${EPOCHREALTIME/[.,]/} ms=${ms%???} pending=0
-        (( ms - ${g:-0} < 1000 )) && pending=1
-        put g 0
-        case "$2$pending" in
-            g0) put g "$ms" ;;
-            g1) echo first ;;
-            l1) view liked ;;  # gl, gp, gs, gS: straight to a tab
-            p1) view playlists ;;
-            s1) view search ;;
-            S1) view speakers ;;
-            p0) "$self" prev &>/dev/null; echo "transform-footer($self _now)" ;;
-            t1) tab_step 1 ;;
-            T1) tab_step -1 ;;
-            l?) [[ -n $4 ]] && is_list "$4" && open_list "$3" "$4" ;;
-            h?) [[ $tab == pl ]] && view "$(st plfrom)" ;;
-            a?) [[ -n $4 && $tab != speakers ]] && queue_add "$3" "$4" ;;
-            r?) rm -f "$(list "$tab")"; echo "reload($self _show $tab)+$(label)" ;;
+    _key)  # $2 = key, $3-$5 = {1} {2} {n}. g and d wait 1 s for the next key (gg, gt, gl, …, dd, dG).
+        tab=$(st tab) ms=${EPOCHREALTIME/[.,]/} ms=${ms%???}
+        read -r pre at <<<"$(st pre)" || true
+        (( ms - ${at:-0} < 1000 )) || pre=""
+        put pre ""
+        case "${pre:-}$2" in
+            g | d) put pre "$2 $ms" ;;
+            gg) echo first ;;
+            gl) view liked ;;  # gl, gp, gs, gq, gS: straight to a tab
+            gp) view playlists ;;
+            gs) view search ;;
+            gq) view queue ;;
+            gS) view speakers ;;
+            gt) tab_step 1 ;;
+            gT) tab_step -1 ;;
+            G) echo last ;;
+            q) echo abort ;;
+            p) "$self" prev &>/dev/null; echo "transform-footer($self _now)" ;;
+            l) [[ -n $4 ]] && is_list "$4" && open_list "$3" "$4" ;;
+            h) [[ $tab == pl ]] && view "$(st plfrom)" ;;
+            a) [[ -n $4 && $tab != @(speakers|queue) ]] && queue_add "$3" "$4" ;;
+            r) rm -f "$(list "$tab")"; echo "reload($self _show $tab)+$(label)" ;;
+            dd) [[ $tab == queue && -n $4 ]] && { ctl "remove?i=$5" >/dev/null; note "Removed: $(clean "$3")"; echo "reload($self _show queue)"; } ;;
+            dG) [[ $tab == queue ]] && { ctl clear >/dev/null; note "Cleared the queue after the song playing"; echo "reload($self _show queue)"; } ;;
         esac
         exit 0 ;;
     _ticker)  # status line every 0.12 s (spinner); "now playing" every ~1 s, and the ▶ in the list when the track changes
@@ -365,13 +385,14 @@ put host "$YTCAST_HOST"; put name "$(name "$(info "$YTCAST_HOST")")"; put tab li
 trap 'kill $! 2>/dev/null; rm -rf "$YT_DIR"' EXIT  # the ticker stops with the UI; ytcast-player keeps playing
 
 help='j/k  ctrl-d/u  gg/G   move · half page · top/bottom
-gt/gT                 tabs: liked → playlists → search → speakers
-gl  gp  gs  gS        go to: liked · playlists · search · speakers
+gt/gT                 tabs: liked → playlists → search → queue → speakers
+gl gp gs gq gS        go to: liked · playlists · search · queue · speakers
 tab                   search: songs → videos → albums
 l/h                   open playlist / album · back
 /  esc                filter (search tab: new search) · back
-enter                 play from song · open playlist / album · search · choose speaker
+enter                 play from song · open playlist / album · search · jump in queue · choose speaker
 a                     add song / playlist / album to the queue
+dd  dG                queue tab: remove the song · everything after the one playing
 space  n/p  +/-       pause · next/previous · volume
 r                     refresh list (liked songs and playlists are cached)
 ?  q                  shortcuts · quit (playback continues)'
@@ -381,9 +402,9 @@ fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' 
     --header "$help" --footer ' ' --footer-border=top --footer-label ' Press ? for shortcuts ' \
     --bind "start:reload($self _show liked)+toggle-header,?:toggle-header" \
     --bind "load:transform($self _label)" \
-    --bind 'j:down,k:up,G:last,q:abort,ctrl-d:half-page-down,ctrl-u:half-page-up' \
+    --bind 'j:down,k:up,ctrl-d:half-page-down,ctrl-u:half-page-up' \
     --bind "g:${key//\{k\}/g},t:${key//\{k\}/t},T:${key//\{k\}/T},h:${key//\{k\}/h},l:${key//\{k\}/l},r:${key//\{k\}/r},a:${key//\{k\}/a}" \
-    --bind "s:${key//\{k\}/s},S:${key//\{k\}/S},p:${key//\{k\}/p}" \
+    --bind "s:${key//\{k\}/s},S:${key//\{k\}/S},p:${key//\{k\}/p},d:${key//\{k\}/d},G:${key//\{k\}/G},q:${key//\{k\}/q}" \
     --bind "tab:transform($self _section)" \
     --bind "enter:transform($self _enter {2} {n} {q} {1})" \
     --bind "space:execute-silent($self pause)+transform-footer($self _now)" \

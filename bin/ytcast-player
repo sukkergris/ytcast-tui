@@ -6,7 +6,9 @@ warm, with the login read once) turns each URL into an audio stream right before
 next track is resolved in the background meanwhile.
 Control API: HTTP over a unix socket (curl --unix-socket):
   GET  /ping /now /current /pause /next /prev /stop /vol[?set=N | ?delta=N]
-  POST /queue?start=N   body: YouTube URLs, one per line; replaces the queue and plays from song N
+  GET  /queue           the queue as "played|playing|queued<TAB>title<TAB>URL" lines
+  GET  /jump?i=N  /remove?i=N  /clear   play song N · remove song N · remove everything after the one playing
+  POST /queue?start=N   body: "URL[<TAB>title]" lines; replaces the queue and plays from song N
   POST /queue?append=1  adds to the end of the queue; plays them if nothing of ours is playing
 Quits after 30 min without playback. Usage: ytcast-player <speaker IP> <socket> [browser to read the login from]
 """
@@ -34,6 +36,7 @@ playing = ""                  # stream URL we started, to tell our playback from
 loading = False               # resolving a track (shown in "now playing")
 error = ""                    # last track that could not be played
 streams = {}                  # prefetched: YouTube URL -> (stream URL, content type, metadata)
+titles = {}                   # YouTube URL -> title, from the UI or from yt-dlp, for the queue view
 advance = threading.Event()   # set by the status listener; the main loop plays the next track
 
 
@@ -97,6 +100,7 @@ def play(i):  # play queue[i]; tracks that can't be played (removed, region-lock
                 if q is not queue:  # a new queue came while we resolved
                     return False
                 pos, playing, error = i, stream, ""
+                titles.setdefault(q[i], " ‒ ".join(x for x in (meta["title"], meta["artist"]) if x))
                 log("played", q[i], meta["title"])
                 mc.play_media(stream, mime, metadata=meta)
                 threading.Thread(target=prefetch, args=(i + 1,), daemon=True).start()
@@ -171,7 +175,27 @@ def stop():
     queue, pos, playing = [], -1, ""
 
 
+def queue_view():
+    return "".join(f"{'played' if i < pos else 'playing' if i == pos else 'queued'}\t{titles.get(u) or u}\t{u}\n"
+                   for i, u in enumerate(queue))
+
+
+def remove(i):
+    global pos
+    if not 0 <= i < len(queue):
+        return
+    del queue[i]
+    if i < pos:
+        pos -= 1
+    elif i == pos:  # the one playing: go on with the next (now at the same index)
+        play(pos) if pos < len(queue) else stop()
+
+
 commands = {
+    "queue": lambda q: queue_view(),
+    "jump": lambda q: play(int(q["i"])) and "",
+    "remove": lambda q: remove(int(q["i"])),
+    "clear": lambda q: queue.__delitem__(slice(pos + 1, None)),
     "ping": lambda q: "ok",
     "now": lambda q: now(),
     "current": lambda q: queue[pos] if queue and ours() else "",
@@ -203,7 +227,13 @@ class Ctl(BaseHTTPRequestHandler):
     def do_POST(self):  # /queue
         global queue, error
         qs = parse_qs(urlsplit(self.path).query)
-        items = [line for line in self.rfile.read(int(self.headers.get("Content-Length", 0))).decode().splitlines() if line]
+        items = []
+        for line in self.rfile.read(int(self.headers.get("Content-Length", 0))).decode().splitlines():
+            url, _, title = line.partition("\t")
+            if url:
+                items.append(url)
+                if title:
+                    titles[url] = title
         if not items:
             return self.reply(400, "empty queue\n")
         if "append" in qs:

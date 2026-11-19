@@ -219,7 +219,8 @@ In the UI:
 
 | Key | Action |
 |---|---|
-| `gl` · `gp` · `gs` · `gS` | go to: liked · playlists · search · speakers |
+| `gl` · `gp` · `gs` · `gq` · `gS` | go to: liked · playlists · search · queue · speakers |
+| `dd` · `dG` | on the Queue tab: remove the song · everything after the one playing |
 | `space` | pause / resume |
 | `n` · `p` | next · previous song |
 | `+` · `-` | volume up · down (5 at a time) |
@@ -227,6 +228,17 @@ In the UI:
 | `q` | quit the UI; **the music keeps playing** |
 
 `enter` replaces the queue with the list from that song; `a` adds to it without stopping what plays. The footer shows how many songs are queued.
+
+To see the queue, press `gq` (go to queue):
+
+```
+  Until Eternity ‒ Blackbriar                 (grey: played)
+▶ I'd Rather Burn ‒ Blackbriar                (green: playing)
+  Arms of the Ocean ‒ Blackbriar
+  Midnight Harbour ‒ The Paper Lanterns       (added with a)
+```
+
+`enter` jumps to a song, `dd` removes it, and `dG` removes everything after the one playing.
 
 From any terminal, also with the UI closed:
 
