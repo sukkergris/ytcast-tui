@@ -114,14 +114,15 @@ fetch() {  # $1 = list
     esac
 }
 
-# Tab line with the current tab in brackets, e.g. "Liked  [ Search › Albums ]  Playlists  Speakers"
+# Tab line with the current tab in brackets, e.g. "Liked (gl)  Playlists (gp)  [ Search (gs) › Albums ]  Speakers (gS)"
 tabline() {
     local cur=$1 out="" t n sec
+    local -A short=([liked]=gl [playlists]=gp [search]=gs [speakers]=gS)  # shown after the name: "Liked (gl)"
     [[ $cur == pl ]] && cur=$(st plfrom)
     for t in liked playlists search speakers; do
-        n=${t^}
-        [[ $t == search && $1 == search ]] && sec=$(section) && n="Search › ${sec^}"
-        [[ $t == "$cur" && $1 == pl ]] && n="${t^} › $(st plname)"
+        n="${t^} (${short[$t]})"
+        [[ $t == search && $1 == search ]] && sec=$(section) && n+=" › ${sec^}"
+        [[ $t == "$cur" && $1 == pl ]] && n+=" › $(st plname)"
         if [[ $t == "$cur" ]]; then out+="[ $n ]  "; else out+="$n  "; fi
     done
     echo "${out%  }"

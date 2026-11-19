@@ -146,7 +146,7 @@ ytcast
 ```
 
 ```
-╭─ ytcast 0.3.0 │ Living room │ [ Liked ]  Playlists  Search  Speakers   loading… ─╮
+╭─ ytcast 0.3.0 │ Living room │ [ Liked (gl) ]  Playlists (gp)  Search (gs)  Speakers (gS) ─╮
 │                                                                                 │
 │ ...                                                                             │
 ├─ Press ? for shortcuts ─────────────────────────────────────────────────────────┤
