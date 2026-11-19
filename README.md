@@ -2,6 +2,8 @@
 
 YouTube Music on Chromecast speakers from the terminal, made for a Harman Kardon Citation but works with any Cast device (Nest, Google Home, …). Browse your liked songs, your playlists and search results with fzf and vim keys, play from any song, and see "now playing" in the footer.
 
+New to this? Follow the **[step-by-step guide](GUIDE.md)**, from installing to playing, including how to give the speaker a fixed IP in your router.
+
 Unofficial; not affiliated with Google or YouTube. Sibling of [hk-tui](https://github.com/sukkergris/hk-tui) (your own music files) and [bluos-tui](https://github.com/sukkergris/bluos-tui) (BluOS players).
 
 ## Install
