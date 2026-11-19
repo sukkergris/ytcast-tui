@@ -49,6 +49,13 @@ def resolve(url):  # (stream URL, content type, metadata)
     return stream, f"audio/{'mp4' if ext == 'm4a' else ext}", meta
 
 
+def log(event, url, text=""):  # one line per track in the log, e.g. to count how many YouTube refuses
+    print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {event:<8} {url}  {text}", file=sys.stderr, flush=True)
+
+
+log("started", host, f"cookies={cookies or '(none)'}")
+
+
 def prefetch(i):
     if 0 <= i < len(queue) and queue[i] not in streams:
         try:
@@ -67,12 +74,13 @@ def play(i):  # play queue[i]; tracks that can't be played (removed, region-lock
                     stream, mime, meta = streams.pop(q[i], None) or resolve(q[i])
                 except RuntimeError as e:
                     error = f"skipped: {e}"
-                    print(q[i], e, file=sys.stderr)
+                    log("skipped", q[i], str(e))
                     i += 1
                     continue
                 if q is not queue:  # a new queue came while we resolved
                     return False
                 pos, playing, error = i, stream, ""
+                log("played", q[i], meta["title"])
                 mc.play_media(stream, mime, metadata=meta)
                 threading.Thread(target=prefetch, args=(i + 1,), daemon=True).start()
                 return True
@@ -91,10 +99,11 @@ class Listener:
         if st.player_state == "IDLE" and st.idle_reason in ("FINISHED", "ERROR") and st.content_id == playing:
             if st.idle_reason == "ERROR":
                 error = f"the speaker could not play {st.title}"
+                log("refused", queue[pos] if 0 <= pos < len(queue) else "", st.title or "")
             advance.set()
 
     def load_media_failed(self, item, code):
-        print(f"load failed: {code}", file=sys.stderr)
+        log("failed", queue[pos] if 0 <= pos < len(queue) else "", f"load failed: {code}")
 
 
 mc.register_status_listener(Listener())
