@@ -42,6 +42,8 @@ The first start fetches your liked songs (a few seconds; the label says "loading
 - **Liked or Playlists shows "! ERROR … playlist does not exist":** yt-dlp could not read your login. Log in on music.youtube.com in Firefox, or set `cookies=` to the browser you use (`chrome`, `chromium`, …).
 - **"! skipped: …" or "! the speaker could not play …" in the footer:** YouTube refused that track (removed, region-locked, or the stream URL was refused), so ytcast skipped to the next one. Updating yt-dlp often helps (`sudo pacman -Syu yt-dlp`).
 - **"the player did not start":** see the log it names, `$XDG_RUNTIME_DIR/ytcast-<IP>.log`.
+- **A red `! …` in the status line, or the UI behaves oddly:** errors from the UI are logged in `$XDG_RUNTIME_DIR/ytcast-ui.log` (which call, line and command), together with when the UI started and exited; the newest error is shown in the status line for 15 s. The player's own log is `$XDG_RUNTIME_DIR/ytcast-<IP>.log`.
+- **"! The player doesn't answer":** the daemon is gone or stuck. Run `ytcast status`, which starts it again, or look in its log.
 - **fzf error about unknown options (`--no-input`, `--footer`):** your fzf is older than 0.63.
 
 ## Usage

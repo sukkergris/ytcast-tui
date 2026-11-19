@@ -303,5 +303,7 @@ rm -rf ~/.config/ytcast ~/.cache/ytcast   # also remove the config and the saved
 | `! ERROR … playlist does not exist` on Liked or Playlists | ytcast could not read your login. Log in on music.youtube.com in Firefox (step 2), then press `r`. |
 | `! skipped: …` or `! the speaker could not play …` | YouTube refused that song; ytcast went on to the next. Happens now and then. If it happens often: `sudo pacman -Syu yt-dlp`. |
 | `the player did not start` | Read the log it names: `cat $XDG_RUNTIME_DIR/ytcast-192.168.1.42.log`. |
+| A red `! …` in the status line | Something in the UI failed. The details are in `$XDG_RUNTIME_DIR/ytcast-ui.log`. |
+| `! The player doesn't answer` | The player stopped. `ytcast status` starts it again; its log is `$XDG_RUNTIME_DIR/ytcast-192.168.1.42.log`. |
 | fzf complains about `--no-input` or `--footer` | Your fzf is too old (needs 0.63+): `sudo pacman -Syu fzf`. |
 | The router's reservation does nothing | Check that manual assignment is turned on, that the MAC is the one from `ip neigh` (step 4a), and restart the speaker (step 4c). |
