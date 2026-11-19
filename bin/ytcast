@@ -24,7 +24,7 @@ host="" cookies=firefox
 YTCAST_HOST=${YTCAST_HOST:-$host}
 save_config() { mkdir -p "${config%/*}"; printf 'host=%s\ncookies=%s\n' "$YTCAST_HOST" "$cookies" >"$config"; }
 run=${XDG_RUNTIME_DIR:-/tmp}
-keys='j,k,g,G,h,l,t,T,r,a,s,S,d,space,n,p,+,-,q,/,?'  # unbound while typing
+keys='j,k,g,G,h,l,t,T,r,a,s,S,d,m,space,n,p,+,-,q,/,?'  # unbound while typing
 
 # --- Speakers ---
 
@@ -122,11 +122,13 @@ swap() { awk -F'\t' '{ print $2 "\t" $1 }'; }  # "Title<TAB>URL" rows → "URL<T
 tabline() {
     local cur=$1 out="" t n sec
     local -A short=([liked]=gl [playlists]=gp [search]=gs [queue]=gq [speakers]=gS)  # shown after the name: "Liked (gl)"
+    [[ $cur == menu ]] && cur=$(st mfrom)
     [[ $cur == pl ]] && cur=$(st plfrom)
     for t in liked playlists search queue speakers; do
         n="${t^} (${short[$t]})"
         [[ $t == search && $1 == search ]] && sec=$(section) && n+=" › ${sec^}"
-        [[ $t == "$cur" && $1 == pl ]] && n+=" › $(st plname)"
+        [[ $t == "$cur" && ($1 == pl || ($1 == menu && $(st mfrom) == pl)) ]] && n+=" › $(st plname)"
+        [[ $t == "$cur" && $1 == menu ]] && n+=" › Menu"
         if [[ $t == "$cur" ]]; then out+="[ $n ]  "; else out+="$n  "; fi
     done
     echo "${out%  }"
@@ -156,13 +158,14 @@ open_list() {  # $1 = row ({1}), $2 = playlist / album URL: show its songs; h go
     put plname "${1#  }"; put plurl "$2"; rm -f "$(list pl)"
     view pl
 }
-queue_add() {  # $1 = row, $2 = URL: add the song, or all songs of a playlist / album, to the end of the queue
-    local t
+queue_add() {  # $1 = row, $2 = URL, $3 = next (right after the song playing): add the song, or all songs of a playlist / album
+    local t how=append done=Queued
     t=$(clean "$1")
+    [[ ${3:-} == next ]] && how=next done="Playing next"
     {
         busy "Adding \"${t%% ‒ *}\" to the queue…"
         player && if is_list "$2"; then songs "$2" | swap; else printf '%s\t%s\n' "$2" "$t"; fi |
-            ctl "queue?append=1" --data-binary @- && note "Queued: ${t%% ‒ *}"
+            ctl "queue?$how=1" --data-binary @- && note "$done: ${t%% ‒ *}"
         [[ $(st tab) == queue ]] && fzf_do "reload($self _show queue)"
     } </dev/null &>/dev/null &
 }
@@ -200,6 +203,48 @@ what() {  # what fetching list $1 means, for the status line
         search) [[ $(section) == albums ]] && echo "Searching albums for \"$(st searched)\" and looking up their names…" ||
             echo "Searching YouTube Music for \"$(st searched)\" ($(section))…" ;;
         speakers) echo "Scanning the network for speakers…" ;;
+    esac
+}
+
+# --- Menu (m): the actions for the row under the cursor, shown in place of the list ---
+
+open_menu() {  # $1 = row, $2 = URL, $3 = index
+    [[ -n $2 && $(st tab) != @(speakers|menu) ]] || return 0
+    put mfrom "$(st tab)"; put mrow "$(clean "$1")"; put murl "$2"; put mn "$3"; put tab menu
+    echo "hide-input+rebind($keys)+enable-search+clear-query+reload-sync($self _show menu)+pos(2)+change-prompt(menu> )+$(label)"
+}
+menu_items() {  # "label<TAB>action" lines; the first line is the title (no action)
+    local from u
+    from=$(st mfrom) u=$(st murl)
+    printf '\e[1m  %s\e[0m\t\n' "$(st mrow)"
+    item() { printf '  %-24s %s\t%s\n' "$1" "$2" "$3"; }
+    if [[ $from == queue ]]; then
+        item "Jump to this song" enter play; item "Play next" "" next; item "Remove from queue" dd remove
+    elif is_list "$u"; then
+        item "Open" l open; item "Play all" "" all; item "Play next" "" next; item "Add to queue" a add
+    else
+        item "Play from here" enter play; item "Play next" "" next; item "Add to queue" a add
+    fi
+}
+menu_back() {  # back to the list the menu came from, on the same row
+    local from search=enable-search prompt
+    from=$(st mfrom) prompt=$from
+    put tab "$from"
+    [[ $from == search ]] && search=disable-search
+    [[ $from == pl ]] && prompt=list
+    echo "$search+hide-input+rebind($keys)+reload-sync($self _show $from)+pos($(($(st mn) + 1)))+change-prompt($prompt> )+$(label)"
+}
+menu_do() {  # $1 = action
+    local u n t
+    u=$(st murl) n=$(st mn) t=$(st mrow)
+    case $1 in
+        play) put tab "$(st mfrom)"; "$self" _enter "$u" "$n" "" "$t" >/dev/null; menu_back ;;  # same as enter on the row
+        open) put tab "$(st mfrom)"; open_list "$t" "$u" ;;
+        all)
+            { busy "Starting \"${t%% ‒ *}\"…"; player && songs "$u" | swap | ctl queue --data-binary @-; } </dev/null &>/dev/null &
+            menu_back ;;
+        next | add) queue_add "$t" "$u" "$1"; menu_back ;;
+        remove) ctl "remove?i=$n" >/dev/null; note "Removed: $t"; menu_back ;;
     esac
 }
 
@@ -259,6 +304,7 @@ case "${1:-}" in
     # Internal sub-calls from fzf
     _now) ctl now; exit ;;
     _label) label; exit ;;
+    _esc) if [[ $(st tab) == menu ]]; then menu_back; else echo "hide-input+rebind($keys)"; fi; exit ;;
     _section)  # tab on the Search tab: songs → videos → albums for the same search
         [[ $(st tab) == search ]] || exit 0
         case $(section) in songs) put section videos ;; videos) put section albums ;; *) put section songs ;; esac
@@ -266,6 +312,7 @@ case "${1:-}" in
         exit ;;
     _show)  # $2 = list; fetched the first time, then printed with ▶ on the song playing
         f=$(list "$2")
+        [[ $2 == menu ]] && { menu_items; exit; }
         [[ $2 == queue ]] && rm -f "$f"  # always fresh from the player
         if [[ ! -e $f ]]; then
             mkdir -p "${f%/*}"
@@ -304,6 +351,7 @@ case "${1:-}" in
             exit
         fi
         [[ -n ${2:-} ]] || exit 0
+        [[ $tab == menu ]] && { menu_do "$2" | tr -d '\n'; exit; }
         case $tab in
             playlists | search) is_list "$2" && { open_list "$(awk -F'\t' -v u="$2" '$2 == u { print $1; exit }' "$(list "$tab")")" "$2"; exit; } ;;&
             speakers)
@@ -330,7 +378,12 @@ case "${1:-}" in
         read -r pre at <<<"$(st pre)" || true
         (( ms - ${at:-0} < 1000 )) || pre=""
         put pre ""
+        if [[ $tab == menu ]]; then  # only moving, h (back) and q work in the menu
+            case "${pre:-}$2" in g) put pre "$2 $ms" ;; gg) echo first ;; G) echo last ;; q) echo abort ;; h) menu_back ;; esac
+            exit 0
+        fi
         case "${pre:-}$2" in
+            m) open_menu "$3" "$4" "$5" ;;
             g | d) put pre "$2 $ms" ;;
             gg) echo first ;;
             gl) view liked ;;  # gl, gp, gs, gq, gS: straight to a tab
@@ -361,7 +414,7 @@ case "${1:-}" in
                     cur="$(ctl current)|$(st pending)" || true  # the song playing, and the one being fetched
                     act="change-footer:$np"
                     tab=$(st tab)
-                    if [[ $cur != "$last" && $tab != @(playlists|speakers) && ! ($tab == search && $(section) == albums) ]]; then
+                    if [[ $cur != "$last" && $tab != @(playlists|speakers|menu) && ! ($tab == search && $(section) == albums) ]]; then
                         act="track-current+reload($self _show $tab)+$act"
                     fi
                     last=$cur
@@ -392,6 +445,7 @@ l/h                   open playlist / album · back
 /  esc                filter (search tab: new search) · back
 enter                 play from song · open playlist / album · search · jump in queue · choose speaker
 a                     add song / playlist / album to the queue
+m                     menu for the row: play · play next · add to queue · open · remove
 dd  dG                queue tab: remove the song · everything after the one playing
 space  n/p  +/-       pause · next/previous · volume
 r                     refresh list (liked songs and playlists are cached)
@@ -404,7 +458,7 @@ fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' 
     --bind "load:transform($self _label)" \
     --bind 'j:down,k:up,ctrl-d:half-page-down,ctrl-u:half-page-up' \
     --bind "g:${key//\{k\}/g},t:${key//\{k\}/t},T:${key//\{k\}/T},h:${key//\{k\}/h},l:${key//\{k\}/l},r:${key//\{k\}/r},a:${key//\{k\}/a}" \
-    --bind "s:${key//\{k\}/s},S:${key//\{k\}/S},p:${key//\{k\}/p},d:${key//\{k\}/d},G:${key//\{k\}/G},q:${key//\{k\}/q}" \
+    --bind "s:${key//\{k\}/s},S:${key//\{k\}/S},p:${key//\{k\}/p},d:${key//\{k\}/d},G:${key//\{k\}/G},q:${key//\{k\}/q},m:${key//\{k\}/m}" \
     --bind "tab:transform($self _section)" \
     --bind "enter:transform($self _enter {2} {n} {q} {1})" \
     --bind "space:execute-silent($self pause)+transform-footer($self _now)" \
@@ -412,4 +466,4 @@ fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' 
     --bind "+:execute-silent($self vol +5)+transform-footer($self _now)" \
     --bind "-:execute-silent($self vol -5)+transform-footer($self _now)" \
     --bind "/:show-input+unbind($keys)" \
-    --bind "esc:hide-input+rebind($keys)" </dev/null
+    --bind "esc:transform($self _esc)" </dev/null

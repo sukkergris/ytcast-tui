@@ -69,6 +69,7 @@ ytcast use <IP>          # switch speaker and save it in the config
 | `enter` | play from this song · open playlist / album · run the search · choose speaker |
 | `a` | add the song, or all songs of a playlist / album, to the end of the queue |
 | `dd` · `dG` | Queue tab: remove the song · remove everything after the one playing |
+| `m` | menu for the row: play · **play next** · add to queue · open · remove |
 | `space` · `n` · `p` · `+` · `-` | pause · next · previous · volume |
 | `r` | refresh the list (Speakers tab: scan the network again) |
 | `?` · `q` | shortcuts · quit (playback continues) |
@@ -76,6 +77,17 @@ ytcast use <IP>          # switch speaker and save it in the config
 On the **Search** tab you type right away; `enter` runs the search, and `enter` again plays the song under the cursor. `tab` switches between songs, videos and albums for the same search, like the chips on music.youtube.com. Artists and playlists can't be searched: yt-dlp doesn't list them.
 
 `enter` replaces the queue with the list from the chosen song; the row shows `⋯ Title -- Fetching…` until it plays, then ▶. `a` adds to the end of the queue without stopping what plays.
+
+Press `m` for a **menu** with the actions for the row under the cursor, shown in place of the list (`j`/`k` and `enter` to choose, `esc` or `h` to go back):
+
+```
+  Arms of the Ocean ‒ Blackbriar
+  Play from here           enter
+  Play next
+  Add to queue             a
+```
+
+**Play next** puts the song (or a whole playlist / album) right after the one playing. On a playlist or album the menu also has *Open* and *Play all*; on the Queue tab *Jump to this song* and *Remove from queue*.
 
 The **Queue** tab (`gq`) shows the queue: played songs in grey, the one playing green with ▶, then what comes next. `enter` jumps to a song, `dd` removes it, and `dG` clears everything after the one playing.
 

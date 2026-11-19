@@ -10,6 +10,7 @@ Control API: HTTP over a unix socket (curl --unix-socket):
   GET  /jump?i=N  /remove?i=N  /clear   play song N · remove song N · remove everything after the one playing
   POST /queue?start=N   body: "URL[<TAB>title]" lines; replaces the queue and plays from song N
   POST /queue?append=1  adds to the end of the queue; plays them if nothing of ours is playing
+  POST /queue?next=1    the same, but right after the song playing ("play next")
 Quits after 30 min without playback. Usage: ytcast-player <speaker IP> <socket> [browser to read the login from]
 """
 import os
@@ -236,12 +237,12 @@ class Ctl(BaseHTTPRequestHandler):
                     titles[url] = title
         if not items:
             return self.reply(400, "empty queue\n")
-        if "append" in qs:
-            queue.extend(items)  # same list, so a play() that is resolving keeps going
+        if "append" in qs or "next" in qs:
+            start = pos + 1 if "next" in qs and 0 <= pos < len(queue) else len(queue)
+            queue[start:start] = items  # in place, so a play() that is resolving keeps going
             if loading or (ours() and mc.status.player_state in ("PLAYING", "BUFFERING", "PAUSED")):
                 threading.Thread(target=prefetch, args=(pos + 1,), daemon=True).start()
                 return self.reply(200, "")
-            start = len(queue) - len(items)
         else:
             queue, error = items, ""
             start = min(int(qs.get("start", ["0"])[0]), len(items) - 1)

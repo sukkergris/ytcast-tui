@@ -221,6 +221,7 @@ In the UI:
 |---|---|
 | `gl` · `gp` · `gs` · `gq` · `gS` | go to: liked · playlists · search · queue · speakers |
 | `dd` · `dG` | on the Queue tab: remove the song · everything after the one playing |
+| `m` | menu for the song: play · play next · add to queue · open · remove |
 | `space` | pause / resume |
 | `n` · `p` | next · previous song |
 | `+` · `-` | volume up · down (5 at a time) |
@@ -239,6 +240,17 @@ To see the queue, press `gq` (go to queue):
 ```
 
 `enter` jumps to a song, `dd` removes it, and `dG` removes everything after the one playing.
+
+Press `m` for a **menu** with the actions for the row under the cursor, shown in place of the list (`j`/`k` and `enter` to choose, `esc` or `h` to go back):
+
+```
+  Arms of the Ocean ‒ Blackbriar
+  Play from here           enter
+  Play next
+  Add to queue             a
+```
+
+**Play next** puts the song (or a whole playlist / album) right after the one playing. On a playlist or album the menu also has *Open* and *Play all*; on the Queue tab *Jump to this song* and *Remove from queue*.
 
 From any terminal, also with the UI closed:
 
