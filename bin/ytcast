@@ -147,7 +147,7 @@ tabline() {
         [[ $t == search && $1 == search ]] && sec=$(section) && n+=" › ${sec^}"
         [[ $t == "$cur" && ($1 == pl || ($1 == menu && $(st mfrom) == pl)) ]] && n+=" › $(st plname)"
         [[ $t == "$cur" && $1 == menu ]] && n+=" › Menu"
-        if [[ $t == "$cur" ]]; then out+="[ $n ]  "; else out+="$n  "; fi
+        if [[ $t == "$cur" ]]; then out+=$'\e[1m'"[ $n ]"$'\e[22m  '; else out+="$n  "; fi  # the current tab in bold
     done
     echo "${out%  }"
 }
@@ -206,9 +206,9 @@ status_line() {  # $1 = frame number, $2 = "now playing" from the player ("" = t
     if [[ -n $msg ]]; then
         (( age >= 2 && age < 100000 )) && msg+=" ${age}s"
         echo " ${spinner[$1 % 10]} $msg "
-    elif (( EPOCHSECONDS - $(mtime "$uilog") < 15 )) && err=$(grep ' ! ' "$uilog" | tail -1) && [[ -n $err ]] &&
-        (( EPOCHSECONDS - $(date -d "${err%% *}" +%s 2>/dev/null || echo 0) < 15 )); then
-        echo " ${err#* } – see $uilog "
+    elif (( EPOCHSECONDS - $(mtime "$uilog") < 15 )) && err=$(tail -1 "$uilog") && [[ $err != *" UI "@(started|exited)* ]]; then
+        err=${err#[0-9][0-9]:[0-9][0-9]:[0-9][0-9] }
+        echo " ! ${err#! } – see $uilog "
     elif [[ -z $2 ]]; then
         echo " ! The player doesn't answer – see $run/ytcast-$YTCAST_HOST.log "
     elif [[ -s $YT_DIR/note ]] && (( EPOCHSECONDS - $(mtime "$YT_DIR/note") < 4 )); then
