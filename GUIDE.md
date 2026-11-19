@@ -177,6 +177,17 @@ The footer shows what is playing:
 
 The song playing is green with ▶ in the list. While the next song is fetched, the footer says `⋯ Loading 2/42…`.
 
+The line just above the footer tells you what ytcast is waiting for, with a spinner and the seconds so far:
+
+```
+⠹ Fetching your liked songs from YouTube Music… 4s
+⠼ Searching albums for "paper lanterns" and looking up their names… 2s
+⠧ Starting "Midnight Harbour"…
+✓ Queued: Low Tide
+```
+
+When nothing is going on, it says `Press ? for shortcuts`.
+
 ---
 
 ## 8. Playlists

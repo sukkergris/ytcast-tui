@@ -91,6 +91,7 @@ cookies=firefox     # browser to read the YouTube login from; empty = no login (
 - **Streams:** right before a song plays, yt-dlp turns its YouTube URL into an audio stream (m4a), which the speaker fetches from YouTube itself. Stream URLs expire, so they are never resolved far ahead; the next song is resolved in the background while the current one plays.
 - **No cover art:** a speaker without a screen (Citation Amp) refuses the whole track when the metadata has a webp thumbnail, so none is sent.
 - **Lists:** liked songs (`music.youtube.com/playlist?list=LM`) and your playlists (`youtube.com/feed/playlists`) are fetched with `yt-dlp --flat-playlist` and cached in `~/.cache/ytcast/`. Search uses `music.youtube.com/search?q=…#songs` (`#videos`, `#albums`), max 30 results. Album results come without names, so each album is looked up (in parallel, ~3 s).
+- **Status line:** the line just above "now playing" shows what ytcast is waiting for, with a spinner and the seconds so far, e.g. `⠹ Searching YouTube Music for "blackbriar" (albums)… 3s`, and `✓ Queued: …` after `a`. Each slow job (fetching a list, starting a song, adding to the queue) writes its message to `$YT_DIR/busy.<pid>`, and the ticker shows the newest one while that process runs.
 - **Speakers:** found by asking every address on the /24 network for `http://<IP>:8008/setup/eureka_info`, which Cast devices answer with their name.
 
 ## TODO

@@ -136,7 +136,7 @@ view() {
     [[ $1 == pl ]] && prompt=list
     [[ $1 == search ]] && search=disable-search
     [[ $1 == search && -z $(st searched) ]] && input="show-input+unbind($keys)"
-    echo "clear-query+$search+$input+reload($self _show $1)+first+change-prompt($prompt> )+$(label '   loading…')"
+    echo "clear-query+$search+$input+reload($self _show $1)+first+change-prompt($prompt> )+$(label)"
 }
 tab_step() {  # $1 = +1 / -1: the next / previous tab
     local tabs=(liked playlists search speakers) cur i
@@ -153,9 +153,48 @@ open_list() {  # $1 = row ({1}), $2 = playlist / album URL: show its songs; h go
     view pl
 }
 queue_add() {  # $1 = row, $2 = URL: add the song, or all songs of a playlist / album, to the end of the queue
-    { player && if is_list "$2"; then songs "$2" | cut -f2; else echo "$2"; fi | ctl "queue?append=1" --data-binary @-; } \
-        </dev/null &>/dev/null &
-    label "   + queued: ${1#  }"
+    local t=${1#  }
+    {
+        busy "Adding \"${t%% ‒ *}\" to the queue…"
+        player && if is_list "$2"; then songs "$2" | cut -f2; else echo "$2"; fi | ctl "queue?append=1" --data-binary @- &&
+            note "Queued: ${t%% ‒ *}"
+    } </dev/null &>/dev/null &
+}
+
+# --- Status line (the footer label, just above "now playing"): what ytcast is waiting for, with a spinner ---
+# Each slow job writes its message to $YT_DIR/busy.<pid>; the ticker shows the newest one while that process lives.
+busy() { echo "$1" >"$YT_DIR/busy.$BASHPID"; }
+note() { echo "$1" >"$YT_DIR/note"; }  # shown for 4 s with ✓ when nothing is busy
+spinner=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+fzf_do() { curl -s --unix-socket "$YT_DIR/fzf.sock" -XPOST http://localhost -d "$1" >/dev/null || true; }  # run fzf actions
+status_line() {  # $1 = frame number, $2 = "now playing" from the player
+    local f msg="" age=0
+    for f in "$YT_DIR"/busy.*; do
+        [[ -e $f ]] || continue
+        kill -0 "${f##*.}" 2>/dev/null || { rm -f "$f"; continue; }
+        msg=$(<"$f") age=$((EPOCHSECONDS - $(stat -c %Y "$f")))
+    done
+    # Order: our own jobs, then a fresh confirmation (4 s), then the player fetching a stream, else the hint
+    if [[ -n $msg ]]; then
+        (( age >= 2 )) && msg+=" ${age}s"
+        echo " ${spinner[$1 % 10]} $msg "
+    elif [[ -s $YT_DIR/note ]] && (( EPOCHSECONDS - $(stat -c %Y "$YT_DIR/note") < 4 )); then
+        echo " ✓ $(<"$YT_DIR/note") "
+    elif [[ ${2%%$'\n'*} == ⋯* ]]; then
+        echo " ${spinner[$1 % 10]} Fetching the audio stream for the next song… "
+    else
+        echo " Press ? for shortcuts "
+    fi
+}
+what() {  # what fetching list $1 means, for the status line
+    case $1 in
+        liked) echo "Fetching your liked songs from YouTube Music…" ;;
+        playlists) echo "Fetching your playlists…" ;;
+        pl) echo "Fetching the songs in \"$(st plname)\"…" ;;
+        search) [[ $(section) == albums ]] && echo "Searching albums for \"$(st searched)\" and looking up their names…" ||
+            echo "Searching YouTube Music for \"$(st searched)\" ($(section))…" ;;
+        speakers) echo "Scanning the network for speakers…" ;;
+    esac
 }
 
 usage() {
@@ -217,12 +256,13 @@ case "${1:-}" in
     _section)  # tab on the Search tab: songs → videos → albums for the same search
         [[ $(st tab) == search ]] || exit 0
         case $(section) in songs) put section videos ;; videos) put section albums ;; *) put section songs ;; esac
-        echo "reload($self _show search)+first+$(label '   loading…')"
+        echo "reload($self _show search)+first+$(label)"
         exit ;;
     _show)  # $2 = list; fetched the first time, then printed with ▶ on the song playing
         f=$(list "$2")
         if [[ ! -e $f ]]; then
             mkdir -p "${f%/*}"
+            [[ $2 == search && -z $(st searched) ]] || busy "$(what "$2")"
             fetch "$2" >"$f.tmp" 2>"$YT_DIR/err" || true
             mv "$f.tmp" "$f"
         fi
@@ -241,11 +281,11 @@ case "${1:-}" in
                 '{ if ($2 == cur) printf "\033[1;32m▶ %s\033[0m\t%s\n", $1, $2; else printf "  %s\t%s\n", $1, $2 }' "$f" ;;
         esac
         exit ;;
-    _enter)  # $2 = {2}: URL or IP; $3 = {n}; $4 = {q}
+    _enter)  # $2 = {2}: URL or IP; $3 = {n}; $4 = {q}; $5 = {1}
         tab=$(st tab)
         if [[ $tab == search && -n ${4:-} && $4 != "$(st searched)" ]]; then  # a new search
             put searched "$4"; rm -f "$YT_DIR"/search-*
-            echo "reload($self _show search)+hide-input+rebind($keys)+first+$(label '   searching…')"
+            echo "reload($self _show search)+hide-input+rebind($keys)+first+$(label)"
             exit
         fi
         [[ -n ${2:-} ]] || exit 0
@@ -254,10 +294,13 @@ case "${1:-}" in
             speakers)
                 put host "$2"; YTCAST_HOST=$2; save_config
                 put name "$(name "$(info "$2")")"
+                busy "Connecting to $(st name)…"
                 player 2>/dev/null || true
+                rm -f "$YT_DIR/busy.$BASHPID"
                 view speakers ;;
             liked | pl | search)  # play the list from this song; runs in the background, the footer shows "Loading…"
-                { player && cut -f2 "$(list "$tab")" | ctl "queue?start=$3" --data-binary @-; } </dev/null &>/dev/null &
+                t=${5#  } t=${t#▶ }
+                { busy "Starting \"${t%% ‒ *}\"…"; player && cut -f2 "$(list "$tab")" | ctl "queue?start=$3" --data-binary @-; } </dev/null &>/dev/null &
                 echo "transform-footer($self _now)" ;;
         esac
         exit ;;
@@ -278,21 +321,29 @@ case "${1:-}" in
             l?) [[ -n $4 ]] && is_list "$4" && open_list "$3" "$4" ;;
             h?) [[ $tab == pl ]] && view "$(st plfrom)" ;;
             a?) [[ -n $4 && $tab != speakers ]] && queue_add "$3" "$4" ;;
-            r?) rm -f "$(list "$tab")"; echo "reload($self _show $tab)+$(label '   loading…')" ;;
+            r?) rm -f "$(list "$tab")"; echo "reload($self _show $tab)+$(label)" ;;
         esac
         exit 0 ;;
-    _ticker)  # update the footer every second; when the track changes, also the ▶ in the list
-        last=""
-        while sleep 1; do
-            read -r YTCAST_HOST <"$YT_DIR/host" || true
-            np=$(ctl now) || continue
-            cur=$(ctl current) || true
-            act="change-footer:$np"
-            tab=$(st tab)
-            if [[ $cur != "$last" && $tab != @(playlists|speakers) && ! ($tab == search && $(section) == albums) ]]; then
-                act="track-current+reload($self _show $tab)+$act"
+    _ticker)  # status line every 0.12 s (spinner); "now playing" every ~1 s, and the ▶ in the list when the track changes
+        last="" shown="" np="" i=0
+        while sleep 0.12; do
+            act=""
+            if (( i % 8 == 0 )); then
+                read -r YTCAST_HOST <"$YT_DIR/host" || true
+                if np=$(ctl now); then
+                    cur=$(ctl current) || true
+                    act="change-footer:$np"
+                    tab=$(st tab)
+                    if [[ $cur != "$last" && $tab != @(playlists|speakers) && ! ($tab == search && $(section) == albums) ]]; then
+                        act="track-current+reload($self _show $tab)+$act"
+                    fi
+                    last=$cur
+                fi
             fi
-            curl -s --unix-socket "$YT_DIR/fzf.sock" -XPOST http://localhost -d "$act" >/dev/null && last=$cur || true
+            [[ -z $act ]] || fzf_do "$act"
+            msg=$(status_line "$i" "$np")  # its own request: a "change-…:text" action must come last
+            i=$((i + 1))
+            [[ $msg == "$shown" ]] || { fzf_do "change-footer-label:$msg"; shown=$msg; }
         done ;;
     "") ;;
     *) usage >&2; exit 1 ;;
@@ -319,7 +370,7 @@ r                     refresh list (liked songs and playlists are cached)
 ?  q                  shortcuts · quit (playback continues)'
 key="transform($self _key {k} {1} {2} {n})"
 fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' --with-nth=1 --prompt 'liked> ' \
-    --layout=reverse --border --border-label " $app │ $(st name) │ $(tabline liked)   loading… " \
+    --layout=reverse --border --border-label " $app │ $(st name) │ $(tabline liked) " \
     --header "$help" --footer ' ' --footer-border=top --footer-label ' Press ? for shortcuts ' \
     --bind "start:reload($self _show liked)+toggle-header,?:toggle-header" \
     --bind "load:transform($self _label)" \
@@ -327,7 +378,7 @@ fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' 
     --bind "g:${key//\{k\}/g},t:${key//\{k\}/t},T:${key//\{k\}/T},h:${key//\{k\}/h},l:${key//\{k\}/l},r:${key//\{k\}/r},a:${key//\{k\}/a}" \
     --bind "s:${key//\{k\}/s},S:${key//\{k\}/S},p:${key//\{k\}/p}" \
     --bind "tab:transform($self _section)" \
-    --bind "enter:transform($self _enter {2} {n} {q})" \
+    --bind "enter:transform($self _enter {2} {n} {q} {1})" \
     --bind "space:execute-silent($self pause)+transform-footer($self _now)" \
     --bind "n:execute-silent($self next)+transform-footer($self _now)" \
     --bind "+:execute-silent($self vol +5)+transform-footer($self _now)" \
