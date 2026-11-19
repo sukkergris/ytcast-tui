@@ -289,7 +289,6 @@ Give that speaker a fixed IP too (step 4).
 
 ```bash
 ~/Code/ytcast-tui/install.sh      # update to the latest version
-pkill -f ytcast-player            # then restart the player, so it runs the new version
 sudo pacman -R ytcast-tui-git     # remove
 rm -rf ~/.config/ytcast ~/.cache/ytcast   # also remove the config and the saved lists
 ```

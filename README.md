@@ -19,7 +19,7 @@ cd ~/Code/ytcast-tui
 ./install.sh         # installs the dependencies, ytcast and ytcast-player to /usr/bin
 ```
 
-Update: `~/Code/ytcast-tui/install.sh`. It pulls the latest version from GitHub, builds the package and installs it with pacman. Restart the player daemon afterwards, so it runs the new code: `pkill -f ytcast-player` (the next `ytcast` command starts it again; the song playing finishes, but the queue stops until then).
+Update: `~/Code/ytcast-tui/install.sh`. It pulls the latest version from GitHub, builds the package and installs it with pacman. The next `ytcast` command notices that the player daemon is from before the update and restarts it ("Restarting the player…"); the song playing finishes, but the old queue is gone.
 Uninstall: `sudo pacman -R ytcast-tui-git`
 Changing the code? See [Development](#development).
 
@@ -187,7 +187,7 @@ Good to know:
 - `makepkg` writes the new `pkgver` (e.g. `r6.cce9dd8`) into `PKGBUILD`. Commit it as `chore: opdater pkgver fra makepkg`.
 - After `./dev.sh`, `pacman -Qkk ytcast-tui-git` reports the files as modified. That is expected until the next `./install.sh`.
 - Version bump: change `app="ytcast X.Y.Z"` in `bin/ytcast`, commit, add an annotated tag `vX.Y.Z` and push with `git push --follow-tags`.
-- **Restart the daemon** after `./dev.sh` or `./install.sh`: `pkill -f ytcast-player`. A running `ytcast-player` keeps the old code until it quits.
+- **The daemon restarts itself after an update.** `/ping` answers the modification time of the `ytcast-player` file it was started from; when `ytcast` sees another one (e.g. after `./dev.sh` or `./install.sh`), it stops the old daemon and starts the new one. A changed `cookies=` still needs `pkill -f ytcast-player`.
 - **Test runs talk to the real daemon.** There is one daemon per speaker, found by its socket (`$XDG_RUNTIME_DIR/ytcast-<IP>.sock`), so `bin/ytcast` from the repo controls the same queue as the installed one. Check `ytcast status` before testing, and use another config (`XDG_CONFIG_HOME=/tmp/test-config`) with a speaker nobody listens to.
 
 ## License

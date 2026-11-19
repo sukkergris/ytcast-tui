@@ -46,8 +46,17 @@ scan() {
 # --- Player daemon (ytcast-player) ---
 
 ctl() { curl -s --fail-with-body --max-time 60 --unix-socket "$run/ytcast-$YTCAST_HOST.sock" "http://ytcast/$1" "${@:2}"; }
-player() {  # start ytcast-player for the speaker unless it is running
-    ctl ping &>/dev/null && return
+player() {  # start ytcast-player for the speaker unless it is running (restart one left from before an update)
+    local build running
+    build=$(stat -c %Y "${self%/*}/ytcast-player")
+    running=$(ctl ping 2>/dev/null) || running=""
+    [[ $running == "$build" ]] && return
+    if [[ -n $running ]]; then
+        echo "Restarting the player (ytcast was updated)…" >&2
+        [[ -n ${YT_DIR:-} ]] && busy "Restarting the player (ytcast was updated)…"
+        pkill -f "ytcast-player $YTCAST_HOST $run/" || true
+        for _ in {1..25}; do ctl ping &>/dev/null || break; sleep 0.2; done
+    fi
     info "$YTCAST_HOST" >/dev/null || {
         echo "ytcast: no answer from speaker at $YTCAST_HOST. If its IP changed, run 'ytcast scan' and 'ytcast use <IP>'" >&2
         return 1
@@ -55,7 +64,7 @@ player() {  # start ytcast-player for the speaker unless it is running
     echo "Connecting to $YTCAST_HOST…" >&2
     setsid "${self%/*}/ytcast-player" "$YTCAST_HOST" "$run/ytcast-$YTCAST_HOST.sock" "$cookies" \
         </dev/null &>"$run/ytcast-$YTCAST_HOST.log" &
-    for _ in {1..50}; do ctl ping &>/dev/null && return; sleep 0.2; done
+    for _ in {1..50}; do [[ $(ctl ping 2>/dev/null) == "$build" ]] && return; sleep 0.2; done
     echo "ytcast: the player did not start; see $run/ytcast-$YTCAST_HOST.log" >&2
     return 1
 }
@@ -206,6 +215,11 @@ what() {  # what fetching list $1 means, for the status line
     esac
 }
 
+remove_from_queue() {  # $1 = index, $2 = row; in the background, as removing the song playing starts the next one
+    note "Removed: $(clean "$2")"
+    { ctl "remove?i=$1"; [[ $(st tab) == queue ]] && fzf_do "reload($self _show queue)"; } </dev/null &>/dev/null &
+}
+
 # --- Menu (m): the actions for the row under the cursor, shown in place of the list ---
 
 open_menu() {  # $1 = row, $2 = URL, $3 = index
@@ -244,7 +258,7 @@ menu_do() {  # $1 = action
             { busy "Starting \"${t%% ‒ *}\"…"; player && songs "$u" | swap | ctl queue --data-binary @-; } </dev/null &>/dev/null &
             menu_back ;;
         next | add) queue_add "$t" "$u" "$1"; menu_back ;;
-        remove) ctl "remove?i=$n" >/dev/null; note "Removed: $t"; menu_back ;;
+        remove) remove_from_queue "$n" "$t"; menu_back ;;
     esac
 }
 
@@ -395,12 +409,12 @@ case "${1:-}" in
             gT) tab_step -1 ;;
             G) echo last ;;
             q) echo abort ;;
-            p) "$self" prev &>/dev/null; echo "transform-footer($self _now)" ;;
+            p) "$self" prev &>/dev/null & ;;  # in the background: fetching the stream must not freeze the UI
             l) [[ -n $4 ]] && is_list "$4" && open_list "$3" "$4" ;;
             h) [[ $tab == pl ]] && view "$(st plfrom)" ;;
             a) [[ -n $4 && $tab != @(speakers|queue) ]] && queue_add "$3" "$4" ;;
             r) rm -f "$(list "$tab")"; echo "reload($self _show $tab)+$(label)" ;;
-            dd) [[ $tab == queue && -n $4 ]] && { ctl "remove?i=$5" >/dev/null; note "Removed: $(clean "$3")"; echo "reload($self _show queue)"; } ;;
+            dd) [[ $tab == queue && -n $4 ]] && remove_from_queue "$5" "$3" ;;
             dG) [[ $tab == queue ]] && { ctl clear >/dev/null; note "Cleared the queue after the song playing"; echo "reload($self _show queue)"; } ;;
         esac
         exit 0 ;;
@@ -462,7 +476,7 @@ fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' 
     --bind "tab:transform($self _section)" \
     --bind "enter:transform($self _enter {2} {n} {q} {1})" \
     --bind "space:execute-silent($self pause)+transform-footer($self _now)" \
-    --bind "n:execute-silent($self next)+transform-footer($self _now)" \
+    --bind "n:execute-silent($self next &>/dev/null &)" \
     --bind "+:execute-silent($self vol +5)+transform-footer($self _now)" \
     --bind "-:execute-silent($self vol -5)+transform-footer($self _now)" \
     --bind "/:show-input+unbind($keys)" \

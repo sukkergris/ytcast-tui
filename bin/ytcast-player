@@ -27,6 +27,7 @@ import yt_dlp
 host, sock = sys.argv[1:3]
 cookies = sys.argv[3] if len(sys.argv) > 3 else ""
 IDLE_EXIT = 30 * 60
+BUILD = str(int(os.path.getmtime(__file__)))  # /ping answers this, so ytcast can restart a daemon left from before an update
 
 cast = pychromecast.get_chromecast_from_host((host, 8009, None, None, None))
 cast.wait()
@@ -197,9 +198,9 @@ commands = {
     "jump": lambda q: play(int(q["i"])) and "",
     "remove": lambda q: remove(int(q["i"])),
     "clear": lambda q: queue.__delitem__(slice(pos + 1, None)),
-    "ping": lambda q: "ok",
+    "ping": lambda q: BUILD,
     "now": lambda q: now(),
-    "current": lambda q: queue[pos] if queue and ours() else "",
+    "current": lambda q: queue[pos] if 0 <= pos < len(queue) and ours() else "",
     "vol": volume,
     "pause": lambda q: toggle(),
     "next": lambda q: "" if pos + 1 >= len(queue) else play(pos + 1) and "",
