@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+# ytcast – YouTube Music on Chromecast speakers (made for a Harman Kardon Citation): your liked songs, playlists and
+# search in fzf with vim keys, "now playing" in the footer. Unofficial; not affiliated with Google or YouTube.
+#
+# Playback runs in ytcast-player, a small daemon per speaker that keeps the Cast connection and the queue; this
+# script talks to it with curl over a unix socket. The UI calls itself (_show/_enter/_key/_label/_now/_ticker) from
+# fzf key bindings and the ticker loop. Lists are fetched with yt-dlp the first time a tab is shown.
+# Rows (fields separated by TAB):
+#   songs (liked, pl, search):  Title ‒ Artist <TAB> YouTube URL   (shown with ▶ on the one playing)
+#   playlists:                  Name           <TAB> playlist URL
+#   speakers (stored):          IP Name
+set -euo pipefail
+(( BASH_VERSINFO[0] >= 5 )) || { echo "ytcast needs bash >= 5" >&2; exit 1; }
+self=$(readlink -f "${BASH_SOURCE[0]}")
+app="ytcast 0.1.0"  # name and version shown at the top of the UI
+
+# Config: host=<speaker IP>, cookies=<browser to read the YouTube login from> (default firefox, empty = no login)
+config=${XDG_CONFIG_HOME:-$HOME/.config}/ytcast/config
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/ytcast  # liked songs and playlists, kept between runs (r refreshes)
+host="" cookies=firefox
+# shellcheck source=/dev/null
+[[ -f $config ]] && source "$config"
+YTCAST_HOST=${YTCAST_HOST:-$host}
+save_config() { mkdir -p "${config%/*}"; printf 'host=%s\ncookies=%s\n' "$YTCAST_HOST" "$cookies" >"$config"; }
+run=${XDG_RUNTIME_DIR:-/tmp}
+keys='j,k,g,G,h,l,t,T,r,space,n,p,+,-,q,/,?'  # unbound while typing
+
+# --- Speakers ---
+
+info() { curl -s --connect-timeout 1 --max-time 2 "http://$1:8008/setup/eureka_info"; }  # Cast device info (JSON)
+name() { local n; n=$(grep -oE '"name":"[^"]*"' <<<"$1" | cut -d'"' -f4); printf '%b' "$n"; }  # ø → ø
+local_ip() { ip -4 -o route get 1.1.1.1 | grep -oE 'src [0-9.]+' | cut -d' ' -f2; }
+
+# Cast speakers on the local network ("IP Name"); assumes a /24 network
+scan() {
+    local net
+    net=$(local_ip)
+    net=${net%.*}
+    for i in {1..254}; do
+        (s=$(info "$net.$i") && [[ -n $s ]] && echo "$net.$i $(name "$s")") &
+    done
+    wait
+}
+
+# --- Player daemon (ytcast-player) ---
+
+ctl() { curl -s --fail-with-body --max-time 60 --unix-socket "$run/ytcast-$YTCAST_HOST.sock" "http://ytcast/$1" "${@:2}"; }
+player() {  # start ytcast-player for the speaker unless it is running
+    ctl ping &>/dev/null && return
+    info "$YTCAST_HOST" >/dev/null || {
+        echo "ytcast: no answer from speaker at $YTCAST_HOST. If its IP changed, run 'ytcast scan' and 'ytcast use <IP>'" >&2
+        return 1
+    }
+    echo "Connecting to $YTCAST_HOST…" >&2
+    setsid "${self%/*}/ytcast-player" "$YTCAST_HOST" "$run/ytcast-$YTCAST_HOST.sock" "$cookies" \
+        </dev/null &>"$run/ytcast-$YTCAST_HOST.log" &
+    for _ in {1..50}; do ctl ping &>/dev/null && return; sleep 0.2; done
+    echo "ytcast: the player did not start; see $run/ytcast-$YTCAST_HOST.log" >&2
+    return 1
+}
+
+# --- YouTube Music (yt-dlp) ---
+
+ytdlp() { yt-dlp --no-warnings ${cookies:+--cookies-from-browser "$cookies"} "$@"; }
+urlencode() { python3 -c 'import sys, urllib.parse; print(urllib.parse.quote_plus(sys.argv[1]))' "$1"; }
+search_url() { echo "https://music.youtube.com/search?q=$(urlencode "$1")"; }
+songs() {  # songs of a playlist or search page $1 as rows
+    ytdlp --flat-playlist --playlist-end 500 --print '%(title)s	%(channel,uploader,artist|)s	%(url)s' "$1" |
+        awk -F'\t' -v OFS='\t' '$3 ~ /watch\?v=/ { sub(/ - Topic$/, "", $2); print ($2 == "" ? $1 : $1 " ‒ " $2), $3 }'
+}
+playlists() {
+    ytdlp --flat-playlist --print '%(title)s	%(url)s' "https://www.youtube.com/feed/playlists" | grep -E 'list=' || true
+}
+
+# --- UI ---
+
+st()  { cat "$YT_DIR/$1" 2>/dev/null || true; }  # read state
+put() { echo "$2" >"$YT_DIR/$1"; }
+# The chosen speaker is kept in state, so all sub-calls follow along when it changes
+[[ -n ${YT_DIR:-} && -s ${YT_DIR:-}/host ]] && read -r YTCAST_HOST <"$YT_DIR/host"
+
+list() { case $1 in liked | playlists) echo "$cache/$1" ;; *) echo "$YT_DIR/$1" ;; esac; }  # file of a list
+fetch() {  # $1 = list
+    case $1 in
+        liked) songs "https://music.youtube.com/playlist?list=LM" ;;
+        playlists) playlists ;;
+        pl) songs "$(st plurl)" ;;
+        search) [[ -z $(st searched) ]] || songs "$(search_url "$(st searched)")" ;;
+        speakers) scan | sort -t. -k4,4n ;;
+    esac
+}
+
+# Tab line with the current tab in brackets, e.g. "Liked  [ Playlists ]  Search  Speakers"
+tabline() {
+    local cur=$1 out="" t n
+    [[ $cur == pl ]] && cur=playlists
+    for t in liked playlists search speakers; do
+        n=${t^}
+        [[ $t == playlists && $1 == pl ]] && n="Playlists › $(st plname)"
+        if [[ $t == "$cur" ]]; then out+="[ $n ]  "; else out+="$n  "; fi
+    done
+    echo "${out%  }"
+}
+label() { echo "change-border-label: $app │ $(st name) │ $(tabline "$(st tab)")${1:-} "; }
+
+# Show tab $1: fzf actions. Search shows the input and doesn't filter; enter runs the search.
+view() {
+    local search=enable-search input="hide-input+rebind($keys)" prompt=$1
+    put tab "$1"
+    [[ $1 == pl ]] && prompt=playlist
+    [[ $1 == search ]] && search=disable-search input="show-input+unbind($keys)"
+    echo "clear-query+$search+$input+reload($self _show $1)+first+change-prompt($prompt> )+$(label '   loading…')"
+}
+tab_step() {  # $1 = +1 / -1: the next / previous tab
+    local tabs=(liked playlists search speakers) cur i
+    cur=$(st tab)
+    [[ $cur == pl ]] && cur=playlists
+    for i in "${!tabs[@]}"; do [[ ${tabs[i]} == "$cur" ]] && break; done
+    view "${tabs[(i + $1 + 4) % 4]}"
+}
+open_playlist() { put plname "$1"; put plurl "$2"; rm -f "$(list pl)"; view pl; }
+
+usage() {
+    cat <<EOF
+$app – YouTube Music on Chromecast speakers (unofficial)
+
+Usage: ytcast [command]
+
+  (none)           open the UI
+  play URL|QUERY   play a song or playlist URL, or the first search result
+  pause            pause / resume
+  next | prev      next / previous track
+  stop             stop playback
+  vol [N|+N|-N]    show or set volume
+  status           show what is playing
+  scan             list Cast speakers on the local network
+  use IP           switch to the speaker at IP and save it
+
+Config: $config (host=, cookies=)
+EOF
+}
+
+case "${1:-}" in
+    help | -h | --help) usage; exit ;;
+    scan) scan | sort -t. -k4,4n; exit ;;
+    use)
+        [[ -n ${2:-} ]] || { echo "Usage: ytcast use <IP>" >&2; exit 1; }
+        s=$(info "$2") || { echo "ytcast: no Cast speaker answers at $2" >&2; exit 1; }
+        YTCAST_HOST=$2; save_config
+        echo "Using $(name "$s") at $YTCAST_HOST (saved in $config)"; exit ;;
+esac
+[[ -n $YTCAST_HOST ]] || { echo "ytcast: no speaker chosen. Find one with 'ytcast scan' and pick it with 'ytcast use <IP>'" >&2; exit 1; }
+
+case "${1:-}" in
+    play)
+        [[ -n ${2:-} ]] || { echo "Usage: ytcast play URL|QUERY" >&2; exit 1; }
+        shift
+        echo "Asking YouTube Music…" >&2
+        case $1 in
+            http*list=*) urls=$(songs "$1" | cut -f2) ;;
+            http*) urls=$1 ;;
+            *) urls=$(songs "$(search_url "$*")" | head -1 | cut -f2) ;;
+        esac
+        [[ -n $urls ]] || { echo "ytcast: nothing found" >&2; exit 1; }
+        player; ctl queue --data-binary @- <<<"$urls" >&2; exit ;;
+    pause | next | prev | stop) player; ctl "$1" >/dev/null; exit ;;
+    vol)
+        player
+        case ${2:-} in
+            "") ctl vol; echo ;;
+            [+-]*) ctl "vol?delta=${2#+}" >/dev/null ;;
+            *) ctl "vol?set=$2" >/dev/null ;;
+        esac
+        exit ;;
+    status) player; ctl now; echo; exit ;;
+    # Internal sub-calls from fzf
+    _now) ctl now; exit ;;
+    _label) label; exit ;;
+    _show)  # $2 = list; fetched the first time, then printed with ▶ on the song playing
+        f=$(list "$2")
+        if [[ ! -e $f ]]; then
+            mkdir -p "${f%/*}"
+            fetch "$2" >"$f.tmp" 2>"$YT_DIR/err" || true
+            mv "$f.tmp" "$f"
+        fi
+        if [[ ! -s $f ]]; then
+            if [[ $2 == search && -z $(st searched) ]]; then printf '  Type a search and press enter\t\n'
+            elif [[ -s $YT_DIR/err ]]; then printf '  ! %s\t\n' "$(tail -1 "$YT_DIR/err")"; rm -f "$f"
+            else printf '  (empty)\t\n'; fi
+            exit 0
+        fi
+        case $2 in
+            playlists) cat "$f" ;;
+            speakers) while read -r ip n; do
+                    if [[ $ip == "$YTCAST_HOST" ]]; then printf '\e[1;32m▶ %s ‒ %s\e[0m\t%s\n' "$n" "$ip" "$ip"; else printf '  %s ‒ %s\t%s\n' "$n" "$ip" "$ip"; fi
+                done <"$f" ;;
+            *) awk -F'\t' -v cur="$(ctl current 2>/dev/null || true)" \
+                '{ if ($2 == cur) printf "\033[1;32m▶ %s\033[0m\t%s\n", $1, $2; else printf "  %s\t%s\n", $1, $2 }' "$f" ;;
+        esac
+        exit ;;
+    _enter)  # $2 = {2}: URL or IP; $3 = {n}; $4 = {q}
+        tab=$(st tab)
+        if [[ $tab == search && -n ${4:-} && $4 != "$(st searched)" ]]; then  # a new search
+            put searched "$4"; rm -f "$(list search)"
+            echo "reload($self _show search)+hide-input+rebind($keys)+first+$(label '   searching…')"
+            exit
+        fi
+        [[ -n ${2:-} ]] || exit 0
+        case $tab in
+            playlists) open_playlist "$(awk -F'\t' -v u="$2" '$2 == u { print $1; exit }' "$(list playlists)")" "$2" ;;
+            speakers)
+                put host "$2"; YTCAST_HOST=$2; save_config
+                put name "$(name "$(info "$2")")"
+                player 2>/dev/null || true
+                view speakers ;;
+            *)  # play the list from this song; runs in the background, the footer shows "Loading…"
+                { player && cut -f2 "$(list "$tab")" | ctl "queue?start=$3" --data-binary @-; } </dev/null &>/dev/null &
+                echo "transform-footer($self _now)" ;;
+        esac
+        exit ;;
+    _key)  # $2 = key, $3-$5 = {1} {2} {n}. g waits 1 s for the next key (gg, gt, gT).
+        tab=$(st tab) g=$(st g) ms=${EPOCHREALTIME/[.,]/} ms=${ms%???} pending=0
+        (( ms - ${g:-0} < 1000 )) && pending=1
+        put g 0
+        case "$2$pending" in
+            g0) put g "$ms" ;;
+            g1) echo first ;;
+            t1) tab_step 1 ;;
+            T1) tab_step -1 ;;
+            l?) [[ $tab == playlists && -n $4 ]] && open_playlist "${3#  }" "$4" ;;
+            h?) [[ $tab == pl ]] && view playlists ;;
+            r?) [[ $tab == search ]] || { rm -f "$(list "$tab")"; echo "reload($self _show $tab)+$(label '   loading…')"; } ;;
+        esac
+        exit 0 ;;
+    _ticker)  # update the footer every second; when the track changes, also the ▶ in the list
+        last=""
+        while sleep 1; do
+            read -r YTCAST_HOST <"$YT_DIR/host" || true
+            np=$(ctl now) || continue
+            cur=$(ctl current) || true
+            act="change-footer:$np"
+            tab=$(st tab)
+            if [[ $cur != "$last" && $tab != @(playlists|speakers) ]]; then
+                act="track-current+reload($self _show $tab)+$act"
+            fi
+            curl -s --unix-socket "$YT_DIR/fzf.sock" -XPOST http://localhost -d "$act" >/dev/null && last=$cur || true
+        done ;;
+    "") ;;
+    *) usage >&2; exit 1 ;;
+esac
+
+export YT_DIR="$run/ytcast-ui-$$"
+mkdir -p "$YT_DIR"
+trap 'rm -rf "$YT_DIR"' EXIT
+player
+put host "$YTCAST_HOST"; put name "$(name "$(info "$YTCAST_HOST")")"; put tab liked
+"$self" _ticker &
+trap 'kill $! 2>/dev/null; rm -rf "$YT_DIR"' EXIT  # the ticker stops with the UI; ytcast-player keeps playing
+
+help='j/k  ctrl-d/u  gg/G   move · half page · top/bottom
+gt/gT                 tabs: liked → playlists → search → speakers
+l/h                   open playlist · back
+/  esc                filter (search tab: new search) · back
+enter                 play from song · open playlist · search · choose speaker
+space  n/p  +/-       pause · next/previous · volume
+r                     refresh list (liked songs and playlists are cached)
+?  q                  shortcuts · quit (playback continues)'
+key="transform($self _key {k} {1} {2} {n})"
+fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' --with-nth=1 --prompt 'liked> ' \
+    --layout=reverse --border --border-label " $app │ $(st name) │ $(tabline liked)   loading… " \
+    --header "$help" --footer ' ' --footer-border=top --footer-label ' Press ? for shortcuts ' \
+    --bind "start:reload($self _show liked)+toggle-header,?:toggle-header" \
+    --bind "load:transform($self _label)" \
+    --bind 'j:down,k:up,G:last,q:abort,ctrl-d:half-page-down,ctrl-u:half-page-up' \
+    --bind "g:${key//\{k\}/g},t:${key//\{k\}/t},T:${key//\{k\}/T},h:${key//\{k\}/h},l:${key//\{k\}/l},r:${key//\{k\}/r}" \
+    --bind "enter:transform($self _enter {2} {n} {q})" \
+    --bind "space:execute-silent($self pause)+transform-footer($self _now)" \
+    --bind "n:execute-silent($self next)+transform-footer($self _now)" \
+    --bind "p:execute-silent($self prev)+transform-footer($self _now)" \
+    --bind "+:execute-silent($self vol +5)+transform-footer($self _now)" \
+    --bind "-:execute-silent($self vol -5)+transform-footer($self _now)" \
+    --bind "/:show-input+unbind($keys)" \
+    --bind "esc:hide-input+rebind($keys)" </dev/null
