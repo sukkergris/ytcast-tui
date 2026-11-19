@@ -90,12 +90,52 @@ cookies=firefox     # browser to read the YouTube login from; empty = no login (
 
 ## TODO
 
-- [ ] **Test Liked and Playlists with Firefox cookies.** Not tested yet: the development runs had no login (`cookies=`), so only search and playback were tested. Check:
-  - [ ] Liked: `ytcast` opens on your liked songs; `enter` plays from the chosen song, and the queue continues.
-  - [ ] Playlists: `gt` lists your playlists, `l`/`enter` opens one, `h` goes back, `enter` on a song plays.
-  - [ ] Cache: the next start shows the lists at once; `r` refreshes them.
-  - [ ] Streams resolved with the login: fewer "skipped" / "could not play" than without it?
-  - [ ] Non-music in Liked (shorts and videos liked on youtube.com): do they show up, and should they be filtered out?
+### Test Liked and Playlists with the Firefox login (for 0.2)
+
+The development runs had no login (`cookies=`), so only search and playback are tested. About 15 minutes. Write down what you see, and the numbers from step 4.
+
+The daemon logs every track to `$XDG_RUNTIME_DIR/ytcast-<IP>.log`, one line each:
+
+```
+2026-11-19 10:01:58 started  192.168.1.42  cookies=firefox
+2026-11-19 10:02:03 played   https://music.youtube.com/watch?v=…  Midnight Harbour
+2026-11-19 10:06:11 skipped  https://music.youtube.com/watch?v=…  ERROR: [youtube] …: Video unavailable
+2026-11-19 10:06:15 refused  https://music.youtube.com/watch?v=…  Low Tide
+```
+
+`skipped` = yt-dlp found no stream, `refused` = the speaker could not play the stream (usually HTTP 403 from YouTube). The log starts over each time the daemon starts.
+
+- [ ] **1. Liked (~5 min)**
+  - [ ] `ytcast`: how long does "loading…" take the first time?
+  - [ ] `enter` on the first song; let the queue play 3–4 songs (`n` to go faster). Does it keep going?
+  - [ ] How many shorts or other non-music videos are among the first 50?
+- [ ] **2. Playlists (~3 min)**
+  - [ ] `gt` → Playlists, `l` opens one, `enter` on a song plays it.
+  - [ ] `h` back, open another one. Are the lists right? Non-music playlists in the list?
+- [ ] **3. Cache (~1 min)**
+  - [ ] `q` and `ytcast` again: Liked shows at once.
+  - [ ] `r` fetches the list again ("loading…").
+- [ ] **4. Refused streams, with and without login (~5 min)**
+  - [ ] With the login: play 20 songs from Liked (`n` to step quickly), then count and save the log:
+
+    ```bash
+    grep -cE ' (skipped|refused) ' $XDG_RUNTIME_DIR/ytcast-*.log   # failed
+    grep -c ' played ' $XDG_RUNTIME_DIR/ytcast-*.log                # started
+    cp $XDG_RUNTIME_DIR/ytcast-*.log ~/ytcast-with-login.log
+    ```
+
+  - [ ] Without the login: stop the daemon so it starts again with the new setting, set `cookies=` (empty) in `~/.config/ytcast/config`, and play the same 20 songs. Liked still shows, because the list is cached.
+
+    ```bash
+    ytcast stop; pkill -f ytcast-player
+    sed -i 's/^cookies=.*/cookies=/' ~/.config/ytcast/config
+    ytcast                                                          # the same 20 songs
+    grep -cE ' (skipped|refused) ' $XDG_RUNTIME_DIR/ytcast-*.log
+    grep -c ' played ' $XDG_RUNTIME_DIR/ytcast-*.log
+    ```
+
+  - [ ] Set the login back: `sed -i 's/^cookies=.*/cookies=firefox/' ~/.config/ytcast/config; pkill -f ytcast-player`
+- [ ] **5. Report:** the notes and the two pairs of numbers from step 4. 0.2 is planned from them (e.g. a filter for shorts, and resolving streams with or without login).
 
 ## License
 
