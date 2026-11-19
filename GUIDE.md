@@ -219,7 +219,7 @@ In the UI:
 
 | Key | Action |
 |---|---|
-| `gl` · `gp` · `gs` · `gq` · `gS` | go to: liked · playlists · search · queue · speakers |
+| `gl` · `gp` · `gs` · `gu` · `gS` | go to: liked · playlists · search · queue · speakers |
 | `dd` · `dG` | on the Queue tab: remove the song · everything after the one playing |
 | `m` | menu for the song: play · play next · add to queue · open · remove |
 | `space` | pause / resume |
@@ -230,7 +230,7 @@ In the UI:
 
 `enter` replaces the queue with the list from that song; `a` adds to it without stopping what plays. The footer shows how many songs are queued.
 
-To see the queue, press `gq` (go to queue):
+To see the queue, press `gu` (go to queue):
 
 ```
   Until Eternity ‒ Blackbriar                 (grey: played)

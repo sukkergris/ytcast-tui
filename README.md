@@ -62,7 +62,7 @@ ytcast use <IP>          # switch speaker and save it in the config
 |---|---|
 | `j` · `k` · `ctrl-d` · `ctrl-u` · `gg` · `G` | move · half page · top / bottom |
 | `gt` · `gT` | tabs: liked → playlists → search → queue → speakers |
-| `gl` · `gp` · `gs` · `gq` · `gS` | go to: liked · playlists · search · queue · speakers |
+| `gl` · `gp` · `gs` · `gu` · `gS` | go to: liked · playlists · search · queue · speakers |
 | `tab` | Search tab: songs → videos → albums |
 | `l` · `h` | open playlist / album · back |
 | `/` · `esc` | filter the list (on the Search tab: type a new search) · back |
@@ -89,7 +89,7 @@ Press `m` for a **menu** with the actions for the row under the cursor, shown in
 
 **Play next** puts the song (or a whole playlist / album) right after the one playing. On a playlist or album the menu also has *Open* and *Play all*; on the Queue tab *Jump to this song* and *Remove from queue*.
 
-The **Queue** tab (`gq`) shows the queue: played songs in grey, the one playing green with ▶, then what comes next. `enter` jumps to a song, `dd` removes it, and `dG` clears everything after the one playing.
+The **Queue** tab (`gu`) shows the queue: played songs in grey, the one playing green with ▶, then what comes next. `enter` jumps to a song, `dd` removes it, and `dG` clears everything after the one playing.
 
 On the **Speakers** tab, `enter` switches to the speaker under the cursor (saved in the config) and `r` scans the network again.
 

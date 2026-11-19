@@ -24,7 +24,7 @@ host="" cookies=firefox
 YTCAST_HOST=${YTCAST_HOST:-$host}
 save_config() { mkdir -p "${config%/*}"; printf 'host=%s\ncookies=%s\n' "$YTCAST_HOST" "$cookies" >"$config"; }
 run=${XDG_RUNTIME_DIR:-/tmp}
-keys='j,k,g,G,h,l,t,T,r,a,s,S,d,m,space,n,p,+,-,q,/,?'  # unbound while typing
+keys='j,k,g,G,h,l,t,T,r,a,s,S,d,m,u,space,n,p,+,-,q,/,?'  # unbound while typing
 
 # --- Speakers ---
 
@@ -130,7 +130,7 @@ swap() { awk -F'\t' '{ print $2 "\t" $1 }'; }  # "Title<TAB>URL" rows → "URL<T
 # Tab line with the current tab in brackets, e.g. "Liked (gl)  Playlists (gp)  [ Search (gs) › Albums ]  Speakers (gS)"
 tabline() {
     local cur=$1 out="" t n sec
-    local -A short=([liked]=gl [playlists]=gp [search]=gs [queue]=gq [speakers]=gS)  # shown after the name: "Liked (gl)"
+    local -A short=([liked]=gl [playlists]=gp [search]=gs [queue]=gu [speakers]=gS)  # shown after the name: "Liked (gl)"
     [[ $cur == menu ]] && cur=$(st mfrom)
     [[ $cur == pl ]] && cur=$(st plfrom)
     for t in liked playlists search queue speakers; do
@@ -400,10 +400,10 @@ case "${1:-}" in
             m) open_menu "$3" "$4" "$5" ;;
             g | d) put pre "$2 $ms" ;;
             gg) echo first ;;
-            gl) view liked ;;  # gl, gp, gs, gq, gS: straight to a tab
+            gl) view liked ;;  # gl, gp, gs, gu, gS: straight to a tab
             gp) view playlists ;;
             gs) view search ;;
-            gq) view queue ;;
+            gu) view queue ;;
             gS) view speakers ;;
             gt) tab_step 1 ;;
             gT) tab_step -1 ;;
@@ -453,7 +453,7 @@ trap 'kill $! 2>/dev/null; rm -rf "$YT_DIR"' EXIT  # the ticker stops with the U
 
 help='j/k  ctrl-d/u  gg/G   move · half page · top/bottom
 gt/gT                 tabs: liked → playlists → search → queue → speakers
-gl gp gs gq gS        go to: liked · playlists · search · queue · speakers
+gl gp gs gu gS        go to: liked · playlists · search · queue · speakers
 tab                   search: songs → videos → albums
 l/h                   open playlist / album · back
 /  esc                filter (search tab: new search) · back
@@ -472,7 +472,7 @@ fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' 
     --bind "load:transform($self _label)" \
     --bind 'j:down,k:up,ctrl-d:half-page-down,ctrl-u:half-page-up' \
     --bind "g:${key//\{k\}/g},t:${key//\{k\}/t},T:${key//\{k\}/T},h:${key//\{k\}/h},l:${key//\{k\}/l},r:${key//\{k\}/r},a:${key//\{k\}/a}" \
-    --bind "s:${key//\{k\}/s},S:${key//\{k\}/S},p:${key//\{k\}/p},d:${key//\{k\}/d},G:${key//\{k\}/G},q:${key//\{k\}/q},m:${key//\{k\}/m}" \
+    --bind "s:${key//\{k\}/s},S:${key//\{k\}/S},p:${key//\{k\}/p},d:${key//\{k\}/d},G:${key//\{k\}/G},q:${key//\{k\}/q},m:${key//\{k\}/m},u:${key//\{k\}/u}" \
     --bind "tab:transform($self _section)" \
     --bind "enter:transform($self _enter {2} {n} {q} {1})" \
     --bind "space:execute-silent($self pause)+transform-footer($self _now)" \
