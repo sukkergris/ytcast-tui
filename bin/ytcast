@@ -484,19 +484,34 @@ put host "$YTCAST_HOST"; put name "$(name "$(info "$YTCAST_HOST")")"; put tab li
 "$self" _ticker &
 trap 'e=$?; echo "$(date +%T) UI exited (status $e)" >>"$uilog"; kill $! 2>/dev/null; rm -rf "$YT_DIR"' EXIT  # ytcast-player keeps playing
 
-help='j/k  ctrl-d/u  gg/G   move · half page · top/bottom
-gt/gT                 tabs: liked → playlists → search → queue → speakers
-gl gp gs gu gS        go to: liked · playlists · search · queue · speakers
-tab                   search: songs → videos → albums
-l/h                   open playlist / album · back
-/  esc                filter (search tab: new search) · back
-enter                 play from song · open playlist / album · search · jump in queue · choose speaker
-a                     add song / playlist / album to the queue
-m                     menu for the row: play · play next · add to queue · open · remove
-dd  dG                queue tab: remove the song · everything after the one playing
-space  n/p  +/-       pause · next/previous · volume
-r                     refresh list (liked songs and playlists are cached)
-?  q                  shortcuts · quit (playback continues)'
+b=$'\e[1m' nb=$'\e[22m'  # bold group titles
+help="${b}Move${nb}
+  j / k             down / up one row
+  ctrl-d / ctrl-u   half a page down / up
+  gg / G            first / last row
+${b}Tabs${nb}
+  gt / gT           next / previous tab: Liked → Playlists → Search → Queue → Speakers
+  gl gp gs gu gS    go straight to Liked · Playlists · Search · Queue · Speakers
+  l / h             open the playlist or album under the cursor · go back from it
+  tab               on Search: switch the results between songs, videos and albums
+${b}Search and filter${nb}
+  /                 type to filter the list (on Search: type a new search)
+  enter             in the search box: search
+  esc               close the box (or the menu) and go back to moving in the list
+${b}Play${nb}
+  enter             play the list from this song · open a playlist or album · Queue: jump to the song · Speakers: use it
+  a                 add the song, or all songs of a playlist / album, to the end of the queue
+  m                 menu for the row: play from here · play next · add to queue · open · remove
+  space             pause / resume
+  n / p             next / previous song
+  + / -             volume up / down
+${b}Queue tab (gu)${nb}
+  dd                remove the song under the cursor (the one playing: go on with the next)
+  dG                clear the queue: remove every song after the one playing
+${b}Other${nb}
+  r                 refresh the list (liked songs and playlists are cached between runs)
+  ?                 show / hide these shortcuts
+  q                 quit (the music keeps playing)"
 key="transform($self _key {k} {1} {2} {n})"
 fzf --listen="$YT_DIR/fzf.sock" --no-input --no-preview --ansi --delimiter='\t' --with-nth=1 --id-nth=2 --prompt 'liked> ' \
     --layout=reverse --border --border-label " $app │ $(st name) │ $(tabline liked) " \
