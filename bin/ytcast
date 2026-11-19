@@ -165,7 +165,8 @@ view() {
     [[ $1 == pl ]] && prompt=list
     [[ $1 == search ]] && search=disable-search
     if [[ $1 == search && ${2:-} != back ]]; then input=$(typing_on); else input=$(typing_off); fi
-    echo "clear-query+$search+$input+reload($self _show $1)+first+change-prompt($prompt> )+$(label)"
+    # change-prompt before reload: fzf drops the actions after a reload while it waits for the tracked row
+    echo "clear-query+$search+$input+change-prompt($prompt> )+reload($self _show $1)+first+$(label)"
 }
 tab_step() {  # $1 = +1 / -1: the next / previous tab
     local tabs=(liked playlists search queue speakers) cur i
@@ -255,7 +256,7 @@ open_menu() {  # $1 = row, $2 = URL, $3 = index
 menu_items() {  # "label<TAB>action" lines; the first line is the title (no action)
     local from u
     from=$(st mfrom) u=$(st murl)
-    printf '\e[1m  %s\e[0m\t\n' "$(st mrow)"
+    printf '\e[1m  %s\e[0m\t \n' "$(st mrow)"  # id " ": see _show
     item() { printf '  %-24s %s\t%s\n' "$1" "$2" "$3"; }
     if [[ $from == queue ]]; then
         item "Jump to this song" enter play; item "Play next" "" next; item "Remove from queue" dd remove
@@ -360,11 +361,12 @@ case "${1:-}" in
             fetch "$2" >"$f.tmp" 2>"$YT_DIR/err" || true
             mv "$f.tmp" "$f"
         fi
+        # The id (field 2, --id-nth) is " ", never empty: fzf 0.75 blocks for good on a reload while tracking a row with an empty id
         if [[ ! -s $f ]]; then
-            if [[ $2 == search && -z $(st searched) ]]; then printf '  Type a search and press enter\t\n'
-            elif [[ $2 == queue ]]; then printf '  The queue is empty. Press a on a song to add it\t\n'
-            elif [[ -s $YT_DIR/err ]]; then printf '  ! %s\t\n' "$(tail -1 "$YT_DIR/err")"; rm -f "$f"
-            else printf '  (empty)\t\n'; fi
+            if [[ $2 == search && -z $(st searched) ]]; then printf '  Type a search and press enter\t \n'
+            elif [[ $2 == queue ]]; then printf '  The queue is empty. Press a on a song to add it\t \n'
+            elif [[ -s $YT_DIR/err ]]; then printf '  ! %s\t \n' "$(tail -1 "$YT_DIR/err")"; rm -f "$f"
+            else printf '  (empty)\t \n'; fi
             exit 0
         fi
         case $2 in
